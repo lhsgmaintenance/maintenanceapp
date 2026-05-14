@@ -1,0 +1,19 @@
+{
+  "name": "LH Maintenance",
+  "short_name": "LH Maint",
+  "description": "Maintenance work orders, routine tasks, reports, and staff alerts.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f7f5",
+  "theme_color": "#1d6f5f",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "icons/lh-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
