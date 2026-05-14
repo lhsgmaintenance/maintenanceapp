@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1d6f5f">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="LH Maintenance">
+  <title>LH Maintenance</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/lh-icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/lh-icon.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">LH</div>
+      <div>
+        <h1>LH Maintenance</h1>
+        <p>Developed by cwc</p>
+      </div>
+    </div>
+    <nav class="nav">
+      <button class="nav-btn active" data-view="dashboard">Dashboard</button>
+      <button class="nav-btn" data-view="orders">Work Orders</button>
+      <button class="nav-btn" data-view="routines">Routine Tasks</button>
+      <button class="nav-btn" data-view="notifications">Notifications</button>
+      <button class="nav-btn" data-view="team">Team</button>
+      <button class="nav-btn" data-view="assets">Assets</button>
+      <button class="nav-btn" data-view="reports">Reports</button>
+      <button class="nav-btn" data-view="live">Live Version</button>
+    </nav>
+    <div class="sidebar-actions">
+      <button id="exportBtn" class="secondary">Export Data</button>
+      <label class="secondary file-label">
+        Import Data
+        <input id="importFile" type="file" accept="application/json">
+      </label>
+    </div>
+  </aside>
+
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Today</p>
+        <h2 id="viewTitle">Dashboard</h2>
+      </div>
+      <div class="top-actions">
+        <button id="installAppBtn" class="secondary hidden">Install App</button>
+        <button id="profileBtn" class="secondary">User Email</button>
+        <button id="enableNotifyBtn" class="secondary">Enable Browser Alerts</button>
+        <button id="newOrderBtn" class="primary">New Work Order</button>
+      </div>
+    </header>
+
+    <section id="dashboardView" class="view active">
+      <div class="stats-grid">
+        <article class="stat">
+          <span>Open</span>
+          <strong id="statOpen">0</strong>
+        </article>
+        <article class="stat">
+          <span>In Progress</span>
+          <strong id="statProgress">0</strong>
+        </article>
+        <article class="stat">
+          <span>Overdue</span>
+          <strong id="statOverdue">0</strong>
+        </article>
+        <article class="stat">
+          <span>Completed</span>
+          <strong id="statDone">0</strong>
+        </article>
+      </div>
+      <div class="split">
+        <section>
+          <div class="section-head">
+            <h3>Urgent Jobs</h3>
+          </div>
+          <div id="urgentList" class="order-list"></div>
+        </section>
+        <section>
+          <div class="section-head">
+            <h3>Upcoming Schedule</h3>
+          </div>
+          <div id="scheduleList" class="timeline"></div>
+        </section>
+      </div>
+    </section>
+
+    <section id="ordersView" class="view">
+      <div class="toolbar">
+        <input id="searchInput" type="search" placeholder="Search order, asset, area, assignee">
+        <select id="statusFilter">
+          <option value="all">All statuses</option>
+          <option value="Open">Open</option>
+          <option value="In Progress">In Progress</option>
+          <option value="Waiting Parts">Waiting Parts</option>
+          <option value="Completed">Completed</option>
+        </select>
+        <select id="priorityFilter">
+          <option value="all">All priorities</option>
+          <option value="Critical">Critical</option>
+          <option value="High">High</option>
+          <option value="Medium">Medium</option>
+          <option value="Low">Low</option>
+        </select>
+      </div>
+      <div id="ordersList" class="order-list"></div>
+    </section>
+
+    <section id="routinesView" class="view">
+      <div class="section-head">
+        <h3>Routine Maintenance</h3>
+        <button id="newRoutineBtn" class="secondary">New Routine</button>
+      </div>
+      <div id="routinesList" class="order-list"></div>
+    </section>
+
+    <section id="notificationsView" class="view">
+      <div class="section-head">
+        <h3>Assignment Notifications</h3>
+        <button id="clearNotificationsBtn" class="secondary">Mark All Read</button>
+      </div>
+      <div id="notificationsList" class="order-list"></div>
+    </section>
+
+    <section id="teamView" class="view">
+      <div id="teamGrid" class="team-grid"></div>
+    </section>
+
+    <section id="assetsView" class="view">
+      <div class="section-head">
+        <h3>Equipment Register</h3>
+        <button id="addAssetBtn" class="secondary">Add Asset</button>
+      </div>
+      <div id="assetsTable" class="table"></div>
+    </section>
+
+    <section id="reportsView" class="view">
+      <div class="report-grid">
+        <article class="asset-report-card">
+          <h3>Assets</h3>
+          <div id="assetReport" class="table"></div>
+        </article>
+        <article>
+          <h3>Task Type</h3>
+          <div id="taskTypeReport" class="bars"></div>
+        </article>
+        <article>
+          <h3>Priority Category</h3>
+          <div id="priorityReport" class="bars"></div>
+        </article>
+      </div>
+      <button id="printBtn" class="secondary">Print Report</button>
+    </section>
+
+    <section id="liveView" class="view">
+      <div class="settings-panel">
+        <h3>Live Version Setup</h3>
+        <p>Internal staff version planned for Google Drive storage, PDF report filing, and email notifications.</p>
+        <div class="settings-grid">
+          <div>
+            <strong>Database</strong>
+            <span>Google Drive or Google Sheets record storage for staff usage.</span>
+          </div>
+          <div>
+            <strong>PDF Storage</strong>
+            <span>Completion reports to be saved into a selected Drive folder after Submit Done.</span>
+          </div>
+          <div>
+            <strong>Email Flow</strong>
+            <span>Send the completion PDF to the task admin or assigner email address.</span>
+          </div>
+          <div>
+            <strong>User Registration</strong>
+            <span>Staff sign in or register with their own company email address.</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="orderDialog">
+    <form id="orderForm" method="dialog">
+      <div class="dialog-head">
+        <h3 id="dialogTitle">New Work Order</h3>
+        <button type="button" class="icon-btn" id="closeDialogBtn" aria-label="Close">x</button>
+      </div>
+      <input type="hidden" id="orderId">
+      <div class="form-grid">
+        <label>Title<input id="titleInput" required></label>
+        <label>Asset<input id="assetInput" required></label>
+        <label>Area<input id="areaInput" required></label>
+        <label>Assigned To<input id="assigneeInput" required></label>
+        <label>Assignee Email<input id="assigneeEmailInput" type="email" placeholder="optional"></label>
+        <label>Admin / Assigner Email<input id="adminEmailInput" type="email" placeholder="optional"></label>
+        <label>Task Type
+          <select id="taskTypeInput">
+            <option>Routine Maintenance</option>
+            <option selected>Breakdown</option>
+            <option>Ad-hoc</option>
+            <option>Inspection</option>
+            <option>Improvement</option>
+          </select>
+        </label>
+        <label>Priority
+          <select id="priorityInput">
+            <option>Critical</option>
+            <option>High</option>
+            <option selected>Medium</option>
+            <option>Low</option>
+          </select>
+        </label>
+        <label>Status
+          <select id="statusInput">
+            <option>Open</option>
+            <option>In Progress</option>
+            <option>Waiting Parts</option>
+            <option>Completed</option>
+          </select>
+        </label>
+        <label>Due Date<input id="dueInput" type="date" required></label>
+        <label>Estimated Hours<input id="hoursInput" type="number" min="0.5" step="0.5" value="1"></label>
+      </div>
+      <label class="full">Details<textarea id="detailsInput" rows="4"></textarea></label>
+      <label class="full">Latest Update<textarea id="updateInput" rows="3"></textarea></label>
+      <div class="dialog-actions">
+        <button type="button" id="deleteOrderBtn" class="danger">Delete</button>
+        <span></span>
+        <button type="button" class="secondary" id="cancelBtn">Cancel</button>
+        <button class="primary" id="saveOrderBtn">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="profileDialog">
+    <form id="profileForm" method="dialog">
+      <div class="dialog-head">
+        <h3>User Email</h3>
+        <button type="button" class="icon-btn" id="closeProfileBtn" aria-label="Close">x</button>
+      </div>
+      <label class="full">Your Email Address<input id="userEmailInput" type="email" placeholder="staff@company.com"></label>
+      <p class="hint">Stored on this browser for now. Live version will use Google sign-in or email registration.</p>
+      <div class="dialog-actions">
+        <span></span>
+        <span></span>
+        <button type="button" class="secondary" id="cancelProfileBtn">Cancel</button>
+        <button class="primary">Save Email</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="assetDialog">
+    <form id="assetForm" method="dialog">
+      <div class="dialog-head">
+        <h3>Add Asset</h3>
+        <button type="button" class="icon-btn" id="closeAssetBtn" aria-label="Close">x</button>
+      </div>
+      <div class="form-grid">
+        <label>Asset Name<input id="assetNameInput" required></label>
+        <label>Area<input id="assetAreaInput" required></label>
+        <label>Type<input id="assetTypeInput" required></label>
+        <label>Last Service<input id="assetServiceInput" type="date" required></label>
+      </div>
+      <div class="dialog-actions">
+        <span></span>
+        <span></span>
+        <button type="button" class="secondary" id="cancelAssetBtn">Cancel</button>
+        <button class="primary">Save Asset</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="routineDialog">
+    <form id="routineForm" method="dialog">
+      <div class="dialog-head">
+        <h3 id="routineDialogTitle">New Routine</h3>
+        <button type="button" class="icon-btn" id="closeRoutineBtn" aria-label="Close">x</button>
+      </div>
+      <input type="hidden" id="routineId">
+      <div class="form-grid">
+        <label>Task Name<input id="routineTitleInput" required></label>
+        <label>Asset<input id="routineAssetInput" required></label>
+        <label>Area<input id="routineAreaInput" required></label>
+        <label>Assigned To<input id="routineAssigneeInput" required></label>
+        <label>Task Type
+          <select id="routineTaskTypeInput">
+            <option selected>Routine Maintenance</option>
+          </select>
+        </label>
+        <label>Frequency
+          <select id="routineFrequencyInput">
+            <option value="7">Weekly</option>
+            <option value="14">Every 2 Weeks</option>
+            <option value="30" selected>Monthly</option>
+            <option value="90">Quarterly</option>
+            <option value="180">Half-Yearly</option>
+            <option value="365">Yearly</option>
+          </select>
+        </label>
+        <label>Next Due Date<input id="routineNextDueInput" type="date" required></label>
+        <label>Priority
+          <select id="routinePriorityInput">
+            <option>High</option>
+            <option selected>Medium</option>
+            <option>Low</option>
+          </select>
+        </label>
+        <label>Estimated Hours<input id="routineHoursInput" type="number" min="0.5" step="0.5" value="1"></label>
+      </div>
+      <label class="full">Checklist Items<textarea id="routineChecklistInput" rows="6" placeholder="Enter one checkpoint per line"></textarea></label>
+      <label class="full">Details<textarea id="routineDetailsInput" rows="3"></textarea></label>
+      <div class="dialog-actions">
+        <button type="button" id="deleteRoutineBtn" class="danger">Delete</button>
+        <span></span>
+        <button type="button" class="secondary" id="cancelRoutineBtn">Cancel</button>
+        <button class="primary">Save Routine</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
