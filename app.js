@@ -1,7 +1,7 @@
 const storeKey = "lhMaintenanceData";
 const legacyStoreKey = "maintenanceDeskData";
-const appVersion = "1.2.8";
-const appBuild = "20260516a";
+const appVersion = "1.2.9";
+const appBuild = "20260516b";
 const defaultApiUrl = "https://script.google.com/macros/s/AKfycbzfsye5T03XaH5YVY27i6Hk7T9frOHYtJ4XRPezG5xLhfQonBdWvjrLaMK0we_5mj0/exec";
 const pushConfig = {
   firebaseApiKey: "AIzaSyCbpeDorCWK50tBwbZ3EL8HtMqknyuPpes",
@@ -361,12 +361,18 @@ async function refreshRemoteData({ announceErrors = false } = {}) {
     if (loaded) render();
     return loaded;
   } catch (err) {
-    updateSyncStatus("error", `Sync failed: ${err.message}`);
-    if (announceErrors) alert(`Could not refresh Google database: ${err.message}`);
+    const diagnostic = `Sync failed: ${err.message}. Backend: ${shortBackendUrl()}`;
+    updateSyncStatus("error", diagnostic);
+    if (announceErrors) alert(`Could not refresh Google database: ${err.message}\n\nBackend URL:\n${backendUrl()}`);
     return false;
   } finally {
     remoteRefreshInFlight = false;
   }
+}
+
+function shortBackendUrl() {
+  const url = backendUrl();
+  return url.length > 80 ? `${url.slice(0, 64)}...${url.slice(-12)}` : url;
 }
 
 function updateSyncStatus(state, message) {
