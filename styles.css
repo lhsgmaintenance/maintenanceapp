@@ -269,6 +269,13 @@ button:disabled {
   font-size: 13px;
 }
 
+.order-shortcut {
+  width: 100%;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
 .hint {
   color: var(--muted);
   font-size: 12px;

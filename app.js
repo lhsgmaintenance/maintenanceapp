@@ -206,8 +206,8 @@ function normalizeData(loaded) {
       status: item.status || (item.checked ? "ok" : "")
     }));
     order.updates = order.updates || [];
-    order.assigneeEmail = order.assigneeEmail || "";
-    order.adminEmail = order.adminEmail || "";
+    order.assigneeEmail = normalizeEmail(order.assigneeEmail);
+    order.adminEmail = normalizeEmail(order.adminEmail);
     order.attachment = order.attachment || null;
   });
   loaded.routines.forEach(routine => {
@@ -281,7 +281,7 @@ function renderDashboard() {
     .sort((a, b) => a.due.localeCompare(b.due))
     .slice(0, 6);
   document.querySelector("#scheduleList").innerHTML = schedule.length
-    ? schedule.map(o => `<div class="timeline-item"><strong>${escapeHtml(o.due)}</strong><br>${escapeHtml(o.title)} - ${escapeHtml(o.assignee)}</div>`).join("")
+    ? schedule.map(o => `<button class="timeline-item order-shortcut" data-order-id="${escapeHtml(o.id)}"><strong>${escapeHtml(o.due)}</strong><br>${escapeHtml(o.title)} - ${escapeHtml(o.assignee)}</button>`).join("")
     : empty("No upcoming work.");
 }
 
@@ -533,8 +533,8 @@ async function saveOrder(event) {
     asset: document.querySelector("#assetInput").value.trim(),
     area: document.querySelector("#areaInput").value.trim(),
     assignee: document.querySelector("#assigneeInput").value.trim(),
-    assigneeEmail: document.querySelector("#assigneeEmailInput").value.trim(),
-    adminEmail: document.querySelector("#adminEmailInput").value.trim(),
+    assigneeEmail: normalizeEmail(document.querySelector("#assigneeEmailInput").value),
+    adminEmail: normalizeEmail(document.querySelector("#adminEmailInput").value),
     taskType: document.querySelector("#taskTypeInput").value,
     priority: document.querySelector("#priorityInput").value,
     status: document.querySelector("#statusInput").value,
@@ -797,6 +797,7 @@ function createAssignmentNotification(order) {
   const notification = {
     id: nextNotificationId(),
     assignee: order.assignee,
+    assigneeEmail: normalizeEmail(order.assigneeEmail),
     orderId: order.id,
     title: `Assigned: ${order.title}`,
     message: `${order.id} has been assigned to ${order.assignee}. Due date: ${order.due}.${order.assigneeEmail ? ` Email: ${order.assigneeEmail}.` : ""}`,
@@ -1122,7 +1123,20 @@ function visibleOrders() {
   if (canManageData()) return data.orders;
   const currentEmail = normalizeEmail(data.settings.userEmail);
   if (!currentEmail) return [];
-  return data.orders.filter(order => normalizeEmail(order.assigneeEmail) === currentEmail);
+  return data.orders.filter(order => isOrderAssignedToEmail(order, currentEmail));
+}
+
+function isOrderAssignedToEmail(order, email) {
+  const currentEmail = normalizeEmail(email);
+  return Boolean(currentEmail && normalizeEmail(order.assigneeEmail) === currentEmail);
+}
+
+function openAssignedOrder(orderId) {
+  setView("orders");
+  els.statusFilter.value = "all";
+  els.priorityFilter.value = "all";
+  els.searchInput.value = orderId || "";
+  renderOrders();
 }
 
 function renderAccessControls() {
@@ -1275,6 +1289,13 @@ document.body.addEventListener("click", event => {
     return;
   }
 
+  const orderShortcut = event.target.closest(".order-shortcut");
+  if (orderShortcut) {
+    event.stopPropagation();
+    openAssignedOrder(orderShortcut.dataset.orderId);
+    return;
+  }
+
   const routineAction = event.target.closest(".routine-action");
   if (routineAction) {
     event.stopPropagation();
@@ -1297,7 +1318,7 @@ document.body.addEventListener("click", event => {
       notification.read = true;
       saveData();
       renderNotifications();
-      setView("orders");
+      openAssignedOrder(notification.orderId);
     }
     return;
   }
