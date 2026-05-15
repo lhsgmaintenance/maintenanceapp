@@ -1,7 +1,7 @@
 const storeKey = "lhMaintenanceData";
 const legacyStoreKey = "maintenanceDeskData";
-const appVersion = "1.2.2";
-const appBuild = "20260515m";
+const appVersion = "1.2.3";
+const appBuild = "20260515n";
 const defaultApiUrl = "https://script.google.com/macros/s/AKfycbzfsye5T03XaH5YVY27i6Hk7T9frOHYtJ4XRPezG5xLhfQonBdWvjrLaMK0we_5mj0/exec";
 const pushConfig = {
   firebaseApiKey: "",
@@ -189,6 +189,7 @@ const els = {
   updateBanner: document.querySelector("#updateBanner"),
   updateText: document.querySelector("#updateText"),
   updateAppBtn: document.querySelector("#updateAppBtn"),
+  syncNowBtn: document.querySelector("#syncNowBtn"),
   syncStatus: document.querySelector("#syncStatus")
 };
 
@@ -261,7 +262,8 @@ function saveData() {
 }
 
 function backendUrl() {
-  return String(data.settings.workspace.apiUrl || "").trim();
+  const workspace = data.settings && data.settings.workspace ? data.settings.workspace : {};
+  return String(workspace.apiUrl || defaultApiUrl).trim();
 }
 
 async function loadRemoteData() {
@@ -314,7 +316,7 @@ function mergeRemoteData(remote) {
   data.settings.workspace = normalizeWorkspace({
     ...localWorkspace,
     ...((remote.settings && remote.settings.workspace) || {}),
-    apiUrl: localWorkspace.apiUrl || defaultApiUrl
+    apiUrl: localWorkspace.apiUrl || ((remote.settings && remote.settings.workspace && remote.settings.workspace.apiUrl) || defaultApiUrl)
   });
   data.settings.userEmail = normalizeEmail(data.settings.userEmail || localSettings.userEmail);
   data.settings.username = data.settings.username || localSettings.username || "";
@@ -360,6 +362,17 @@ function updateSyncStatus(state, message) {
   els.syncStatus.textContent = message;
   els.syncStatus.classList.toggle("sync-ok", state === "ok");
   els.syncStatus.classList.toggle("sync-error", state === "error");
+}
+
+async function forceRefresh() {
+  await updateApp();
+}
+
+async function syncNow() {
+  updateSyncStatus("ok", "Syncing now...");
+  const loaded = await refreshRemoteData({ announceErrors: true });
+  if (!loaded) return;
+  render();
 }
 
 function startRemoteRefresh() {
@@ -493,6 +506,9 @@ function setView(view) {
   els.viewTitle.textContent = viewLabels[view];
   els.navButtons.forEach(btn => btn.classList.toggle("active", btn.dataset.view === view));
   els.views.forEach(viewEl => viewEl.classList.toggle("active", viewEl.id === `${view}View`));
+  if (["dashboard", "orders", "notifications"].includes(view)) {
+    refreshRemoteData();
+  }
 }
 
 const viewLabels = {
@@ -1925,6 +1941,7 @@ els.enableNotifyBtn.addEventListener("click", async () => {
 });
 els.installAppBtn.addEventListener("click", installApp);
 els.updateAppBtn.addEventListener("click", updateApp);
+els.syncNowBtn.addEventListener("click", syncNow);
 if (els.workspaceForm) els.workspaceForm.addEventListener("submit", saveWorkspace);
 if (els.resetWorkspaceBtn) els.resetWorkspaceBtn.addEventListener("click", resetWorkspace);
 els.addAssetBtn.addEventListener("click", () => {
