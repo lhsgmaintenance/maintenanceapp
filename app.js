@@ -1,5 +1,7 @@
 const storeKey = "lhMaintenanceData";
 const legacyStoreKey = "maintenanceDeskData";
+const appVersion = "1.1.0";
+const appBuild = "20260515j";
 const pushConfig = {
   publicVapidKey: "",
   subscribeEndpoint: ""
@@ -168,7 +170,11 @@ const els = {
   installAppBtn: document.querySelector("#installAppBtn"),
   roleStatus: document.querySelector("#roleStatus"),
   workspaceForm: document.querySelector("#workspaceForm"),
-  resetWorkspaceBtn: document.querySelector("#resetWorkspaceBtn")
+  resetWorkspaceBtn: document.querySelector("#resetWorkspaceBtn"),
+  appVersion: document.querySelector("#appVersion"),
+  updateBanner: document.querySelector("#updateBanner"),
+  updateText: document.querySelector("#updateText"),
+  updateAppBtn: document.querySelector("#updateAppBtn")
 };
 
 function todayOffset(days) {
@@ -242,6 +248,11 @@ function render() {
   renderTeam();
   renderAssets();
   renderReports();
+  renderVersion();
+}
+
+function renderVersion() {
+  if (els.appVersion) els.appVersion.textContent = `v${appVersion}`;
 }
 
 function setView(view) {
@@ -924,6 +935,33 @@ async function initPwa() {
     deferredInstallPrompt = null;
     els.installAppBtn.classList.add("hidden");
   });
+
+  checkForAppUpdate();
+}
+
+async function checkForAppUpdate() {
+  try {
+    const response = await fetch(`version.json?check=${Date.now()}`, { cache: "no-store" });
+    if (!response.ok) return;
+    const remote = await response.json();
+    if (!remote.build || remote.build === appBuild) return;
+    els.updateText.textContent = `New version ${remote.version || ""} available.`;
+    els.updateBanner.classList.remove("hidden");
+  } catch {
+    // Update checks are best-effort only.
+  }
+}
+
+async function updateApp() {
+  if ("serviceWorker" in navigator) {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(registrations.map(registration => registration.update()));
+  }
+  if ("caches" in window) {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(key => key.indexOf("lh-maintenance-") === 0).map(key => caches.delete(key)));
+  }
+  location.reload();
 }
 
 async function installApp() {
@@ -1428,6 +1466,7 @@ els.enableNotifyBtn.addEventListener("click", async () => {
   await enableNotifications();
 });
 els.installAppBtn.addEventListener("click", installApp);
+els.updateAppBtn.addEventListener("click", updateApp);
 if (els.workspaceForm) els.workspaceForm.addEventListener("submit", saveWorkspace);
 if (els.resetWorkspaceBtn) els.resetWorkspaceBtn.addEventListener("click", resetWorkspace);
 els.addAssetBtn.addEventListener("click", () => {

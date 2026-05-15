@@ -1,9 +1,10 @@
-const cacheName = "lh-maintenance-v11";
+const cacheName = "lh-maintenance-v12";
 const appShell = [
   "./",
   "index.html",
   "styles.css",
   "app.js",
+  "version.json",
   "manifest.webmanifest",
   "icons/lh-icon.svg"
 ];

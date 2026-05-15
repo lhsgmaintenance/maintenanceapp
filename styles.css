@@ -107,6 +107,12 @@ button {
   gap: 8px;
 }
 
+.app-version {
+  color: #a9bac3;
+  font-size: 12px;
+  text-align: center;
+}
+
 .file-label {
   display: grid;
   place-items: center;
@@ -127,6 +133,21 @@ button {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 16px;
+}
+
+.update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border: 1px solid rgba(15, 111, 115, 0.35);
+  border-radius: 8px;
+  background: rgba(15, 111, 115, 0.1);
+  color: var(--accent-dark);
+  font-size: 14px;
+  font-weight: 700;
 }
 
 .top-actions {
