@@ -1,7 +1,7 @@
 const storeKey = "lhMaintenanceData";
 const legacyStoreKey = "maintenanceDeskData";
-const appVersion = "1.3.0";
-const appBuild = "20260516c";
+const appVersion = "1.3.1";
+const appBuild = "20260516d";
 const defaultApiUrl = "https://script.google.com/macros/s/AKfycbyOnhU47l57sR2xh0SgpaSR9Vt_dCYKYTQNmtYO1BH5of-5ILLwU_LUkxCkxtsHOmJw/exec";
 const legacyApiUrls = [
   "https://script.google.com/macros/s/AKfycbzfsye5T03XaH5YVY27i6Hk7T9frOHYtJ4XRPezG5xLhfQonBdWvjrLaMK0we_5mj0/exec"
@@ -1371,10 +1371,16 @@ async function enableNotifications() {
 
 async function savePushSubscription() {
   const firebaseSaved = await saveFirebaseMessagingToken();
-  if (firebaseSaved) return;
+  if (firebaseSaved) {
+    updateSyncStatus("ok", "Firebase phone alerts enabled on this device.");
+    return;
+  }
 
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
-  if (!pushConfig.publicVapidKey || !pushConfig.subscribeEndpoint) return;
+  if (!pushConfig.publicVapidKey || !pushConfig.subscribeEndpoint) {
+    updateSyncStatus("error", "Browser alerts could not be saved. Firebase setup is incomplete.");
+    return;
+  }
 
   const registration = await navigator.serviceWorker.ready;
   const subscription = await registration.pushManager.subscribe({
@@ -1385,13 +1391,20 @@ async function savePushSubscription() {
   saveData();
 
   await postRemote("savePushToken", { subscription: data.settings.pushSubscription });
+  updateSyncStatus("ok", "Browser push token saved on this device.");
 }
 
 async function saveFirebaseMessagingToken() {
   if (!firebaseConfigReady()) return false;
-  if (!("serviceWorker" in navigator)) return false;
+  if (!("serviceWorker" in navigator)) {
+    updateSyncStatus("error", "This browser has no service worker support for Firebase alerts.");
+    return false;
+  }
   await loadFirebaseSdk();
-  if (!window.firebase || !window.firebase.messaging || !window.firebase.messaging.isSupported()) return false;
+  if (!window.firebase || !window.firebase.messaging || !window.firebase.messaging.isSupported()) {
+    updateSyncStatus("error", "Firebase messaging is not supported on this browser.");
+    return false;
+  }
 
   const registration = await navigator.serviceWorker.ready;
   const messaging = firebaseMessaging || firebase.messaging();
@@ -1413,7 +1426,10 @@ async function saveFirebaseMessagingToken() {
     vapidKey: pushConfig.publicVapidKey,
     serviceWorkerRegistration: registration
   });
-  if (!token) return false;
+  if (!token) {
+    updateSyncStatus("error", "Firebase did not return a phone alert token.");
+    return false;
+  }
   data.settings.pushSubscription = {
     provider: "firebase",
     token,
@@ -1425,6 +1441,7 @@ async function saveFirebaseMessagingToken() {
     token,
     subscription: data.settings.pushSubscription
   });
+  updateSyncStatus("ok", `Firebase token saved ${formatTimeOnly(new Date())}.`);
   return true;
 }
 
