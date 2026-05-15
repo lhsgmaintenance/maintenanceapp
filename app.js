@@ -1,7 +1,7 @@
 const storeKey = "lhMaintenanceData";
 const legacyStoreKey = "maintenanceDeskData";
-const appVersion = "1.2.4";
-const appBuild = "20260515o";
+const appVersion = "1.2.5";
+const appBuild = "20260515p";
 const defaultApiUrl = "https://script.google.com/macros/s/AKfycbzfsye5T03XaH5YVY27i6Hk7T9frOHYtJ4XRPezG5xLhfQonBdWvjrLaMK0we_5mj0/exec";
 const pushConfig = {
   firebaseApiKey: "",
@@ -11,7 +11,7 @@ const pushConfig = {
   publicVapidKey: "",
   subscribeEndpoint: ""
 };
-const remoteRefreshMs = 30000;
+const remoteRefreshMs = 10000;
 const defaultWorkspace = {
   name: "LHSG Maintenance",
   databaseOwnerEmail: "lhsgmaintenance@gmail.com",
@@ -354,7 +354,7 @@ function syncAllAdminInBackground() {
 }
 
 async function refreshRemoteData({ announceErrors = false } = {}) {
-  if (remoteRefreshInFlight || !backendUrl() || !data.settings.userEmail) return false;
+  if (remoteRefreshInFlight || !backendUrl() || !data.settings.userEmail || document.hidden) return false;
   remoteRefreshInFlight = true;
   try {
     const loaded = await loadRemoteData();
@@ -1390,6 +1390,7 @@ async function saveFirebaseMessagingToken() {
     messaging.onMessage(payload => {
       const notification = payload.notification || {};
       const dataPayload = payload.data || {};
+      refreshRemoteData();
       showBrowserNotification({
         orderId: dataPayload.orderId || "LH-MAINTENANCE",
         title: notification.title || dataPayload.title || "LH Maintenance",
@@ -2000,7 +2001,19 @@ document.body.addEventListener("click", event => {
   const orderAction = event.target.closest(".order-action");
   if (orderAction) {
     event.stopPropagation();
-    handleOrderAction(orderAction.dataset.action, orderAction.dataset.orderId);
+    if (orderAction.disabled) return;
+    const originalText = orderAction.textContent;
+    const action = orderAction.dataset.action;
+    const orderId = orderAction.dataset.orderId;
+    orderAction.disabled = true;
+    if (action === "submit") orderAction.textContent = "Submitting...";
+    Promise.resolve(handleOrderAction(action, orderId)).finally(() => {
+      const order = data.orders.find(item => item.id === orderId);
+      if (orderAction.isConnected && order && order.status !== "Completed") {
+        orderAction.disabled = false;
+        orderAction.textContent = originalText;
+      }
+    });
     return;
   }
 

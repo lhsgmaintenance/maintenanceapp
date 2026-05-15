@@ -1,4 +1,4 @@
-const cacheName = "lh-maintenance-v17";
+const cacheName = "lh-maintenance-v18";
 const appShell = [
   "./",
   "index.html",
@@ -47,12 +47,18 @@ self.addEventListener("push", event => {
     url: "./#orders"
   };
   const payload = event.data ? event.data.json() : fallback;
-  event.waitUntil(self.registration.showNotification(payload.title || fallback.title, {
-    body: payload.body || fallback.body,
-    tag: payload.orderId || "lh-maintenance",
+  const notification = payload.notification || {};
+  const data = payload.data || {};
+  const title = notification.title || payload.title || data.title || fallback.title;
+  const body = notification.body || payload.body || data.body || fallback.body;
+  const orderId = data.orderId || payload.orderId || "lh-maintenance";
+  const url = data.url || payload.url || fallback.url;
+  event.waitUntil(self.registration.showNotification(title, {
+    body,
+    tag: orderId,
     icon: "icons/lh-icon.svg",
     badge: "icons/lh-icon.svg",
-    data: { url: payload.url || fallback.url, orderId: payload.orderId || "" }
+    data: { url, orderId }
   }));
 });
 

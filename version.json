@@ -1,5 +1,5 @@
 {
-  "version": "1.2.4",
-  "build": "20260515o",
-  "notes": "Made task actions respond immediately with background Google sync and added grey completed task cards."
+  "version": "1.2.5",
+  "build": "20260515p",
+  "notes": "Increased auto-sync frequency and immediately disables action buttons to prevent duplicate submissions."
 }
