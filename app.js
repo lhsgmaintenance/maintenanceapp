@@ -1,14 +1,14 @@
 const storeKey = "lhMaintenanceData";
 const legacyStoreKey = "maintenanceDeskData";
-const appVersion = "1.2.5";
-const appBuild = "20260515p";
+const appVersion = "1.2.7";
+const appBuild = "20260515r";
 const defaultApiUrl = "https://script.google.com/macros/s/AKfycbzfsye5T03XaH5YVY27i6Hk7T9frOHYtJ4XRPezG5xLhfQonBdWvjrLaMK0we_5mj0/exec";
 const pushConfig = {
-  firebaseApiKey: "",
-  firebaseAppId: "",
-  firebaseProjectId: "",
-  firebaseSenderId: "",
-  publicVapidKey: "",
+  firebaseApiKey: "AIzaSyCbpeDorCWK50tBwbZ3EL8HtMqknyuPpes",
+  firebaseAppId: "1:538805424236:web:8343ea16d3ae30232c4849",
+  firebaseProjectId: "lh-maintenance",
+  firebaseSenderId: "538805424236",
+  publicVapidKey: "BOyXX127q2MAWVD_Wk2_5dpwX4mvL7YA_D29mAA9ziAWwGBxCk64rWtFidVvfXSl4veq9jderp5tVsSF5Yl1jts",
   subscribeEndpoint: ""
 };
 const remoteRefreshMs = 10000;
