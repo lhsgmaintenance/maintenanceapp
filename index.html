@@ -8,12 +8,19 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="LH Maintenance">
   <title>LH Maintenance</title>
+  <script>
+    window.addEventListener("error", function (event) {
+      var box = document.getElementById("startupError");
+      if (box) box.textContent = "App startup error: " + event.message;
+    });
+  </script>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/lh-icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/lh-icon.svg">
-  <link rel="stylesheet" href="styles.css?v=20260515b">
+  <link rel="stylesheet" href="styles.css?v=20260515e">
 </head>
 <body>
+  <div id="startupError" class="startup-error"></div>
   <aside class="sidebar">
     <div class="brand">
       <div class="brand-mark">LH</div>
@@ -345,6 +352,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=20260515d"></script>
+  <script src="app.js?v=20260515e"></script>
 </body>
 </html>

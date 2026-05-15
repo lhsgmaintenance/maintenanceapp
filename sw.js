@@ -1,4 +1,4 @@
-const cacheName = "lh-maintenance-v6";
+const cacheName = "lh-maintenance-v7";
 const appShell = [
   "./",
   "index.html",
@@ -57,7 +57,7 @@ self.addEventListener("push", event => {
 
 self.addEventListener("notificationclick", event => {
   event.notification.close();
-  const targetUrl = event.notification.data?.url || "./#orders";
+  const targetUrl = event.notification.data && event.notification.data.url ? event.notification.data.url : "./#orders";
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then(clientList => {
       for (const client of clientList) {

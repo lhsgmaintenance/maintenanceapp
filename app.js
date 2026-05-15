@@ -120,7 +120,7 @@ const seedData = {
   settings: {
     userEmail: "",
     role: "user",
-    workspace: structuredClone(defaultWorkspace),
+    workspace: cloneData(defaultWorkspace),
     pushSubscription: null
   }
 };
@@ -178,43 +178,43 @@ function todayOffset(days) {
 function loadData() {
   try {
     const stored = localStorage.getItem(storeKey) || localStorage.getItem(legacyStoreKey);
-    const loaded = stored ? JSON.parse(stored) : structuredClone(seedData);
+    const loaded = stored ? JSON.parse(stored) : cloneData(seedData);
     return normalizeData(loaded);
   } catch {
-    return normalizeData(structuredClone(seedData));
+    return normalizeData(cloneData(seedData));
   }
 }
 
 function normalizeData(loaded) {
-  loaded.orders ||= [];
-  loaded.assets ||= [];
-  loaded.routines ||= [];
-  loaded.notifications ||= [];
-  loaded.settings ||= {};
-  loaded.settings.userEmail ||= "";
+  loaded.orders = loaded.orders || [];
+  loaded.assets = loaded.assets || [];
+  loaded.routines = loaded.routines || [];
+  loaded.notifications = loaded.notifications || [];
+  loaded.settings = loaded.settings || {};
+  loaded.settings.userEmail = loaded.settings.userEmail || "";
   loaded.settings.workspace = normalizeWorkspace(loaded.settings.workspace);
   loaded.settings.role = getRoleForEmail(loaded.settings.userEmail);
-  loaded.settings.pushSubscription ||= null;
+  loaded.settings.pushSubscription = loaded.settings.pushSubscription || null;
   loaded.orders.forEach(order => {
-    order.taskType ||= order.id?.startsWith("WO-1003") ? "Routine Maintenance" : "Breakdown";
-    order.startedAt ||= "";
-    order.endedAt ||= "";
-    order.completedAt ||= "";
-    order.checklist ||= [];
+    order.taskType = order.taskType || (String(order.id || "").indexOf("WO-1003") === 0 ? "Routine Maintenance" : "Breakdown");
+    order.startedAt = order.startedAt || "";
+    order.endedAt = order.endedAt || "";
+    order.completedAt = order.completedAt || "";
+    order.checklist = order.checklist || [];
     order.checklist = order.checklist.map(item => ({
       text: typeof item === "string" ? item : item.text,
       status: item.status || (item.checked ? "ok" : "")
     }));
-    order.updates ||= [];
-    order.assigneeEmail ||= "";
-    order.adminEmail ||= "";
-    order.attachment ||= null;
+    order.updates = order.updates || [];
+    order.assigneeEmail = order.assigneeEmail || "";
+    order.adminEmail = order.adminEmail || "";
+    order.attachment = order.attachment || null;
   });
   loaded.routines.forEach(routine => {
-    routine.taskType ||= "Routine Maintenance";
-    routine.checklist ||= routine.details
+    routine.taskType = routine.taskType || "Routine Maintenance";
+    routine.checklist = routine.checklist || (routine.details
       ? routine.details.split(",").map(item => item.trim()).filter(Boolean)
-      : [];
+      : []);
   });
   return loaded;
 }
@@ -477,7 +477,7 @@ function orderCard(order) {
 }
 
 function routineCard(routine) {
-  const checklist = routine.checklist?.length
+  const checklist = routine.checklist && routine.checklist.length
     ? `<ul class="routine-checklist">${routine.checklist.map(item => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
     : `<p>${escapeHtml(routine.details || "No checklist entered.")}</p>`;
   return `<article class="order-card routine-card" data-routine-id="${escapeHtml(routine.id)}">
@@ -502,22 +502,22 @@ function routineCard(routine) {
 function openOrderDialog(order = null) {
   if (!canManageData()) return;
   document.querySelector("#dialogTitle").textContent = order ? "Edit Work Order" : "New Work Order";
-  document.querySelector("#orderId").value = order?.id || "";
-  document.querySelector("#titleInput").value = order?.title || "";
-  document.querySelector("#assetInput").value = order?.asset || "";
-  document.querySelector("#areaInput").value = order?.area || "";
-  document.querySelector("#assigneeInput").value = order?.assignee || "";
-  document.querySelector("#assigneeEmailInput").value = order?.assigneeEmail || "";
-  document.querySelector("#adminEmailInput").value = order?.adminEmail || data.settings.userEmail || "";
-  document.querySelector("#taskTypeInput").value = order?.taskType || "Breakdown";
-  document.querySelector("#priorityInput").value = order?.priority || "Medium";
-  document.querySelector("#statusInput").value = order?.status || "Open";
-  document.querySelector("#dueInput").value = order?.due || todayOffset(1);
-  document.querySelector("#hoursInput").value = order?.hours || 1;
-  document.querySelector("#detailsInput").value = order?.details || "";
+  document.querySelector("#orderId").value = order ? order.id || "" : "";
+  document.querySelector("#titleInput").value = order ? order.title || "" : "";
+  document.querySelector("#assetInput").value = order ? order.asset || "" : "";
+  document.querySelector("#areaInput").value = order ? order.area || "" : "";
+  document.querySelector("#assigneeInput").value = order ? order.assignee || "" : "";
+  document.querySelector("#assigneeEmailInput").value = order ? order.assigneeEmail || "" : "";
+  document.querySelector("#adminEmailInput").value = order ? order.adminEmail || data.settings.userEmail || "" : data.settings.userEmail || "";
+  document.querySelector("#taskTypeInput").value = order ? order.taskType || "Breakdown" : "Breakdown";
+  document.querySelector("#priorityInput").value = order ? order.priority || "Medium" : "Medium";
+  document.querySelector("#statusInput").value = order ? order.status || "Open" : "Open";
+  document.querySelector("#dueInput").value = order ? order.due || todayOffset(1) : todayOffset(1);
+  document.querySelector("#hoursInput").value = order ? order.hours || 1 : 1;
+  document.querySelector("#detailsInput").value = order ? order.details || "" : "";
   document.querySelector("#updateInput").value = "";
   els.deleteOrderBtn.style.visibility = order ? "visible" : "hidden";
-  els.orderDialog.showModal();
+  openDialog(els.orderDialog);
 }
 
 async function saveOrder(event) {
@@ -525,7 +525,7 @@ async function saveOrder(event) {
   if (!canManageData()) return;
   const id = document.querySelector("#orderId").value || nextOrderId();
   const existing = data.orders.find(order => order.id === id);
-  const previousAssignee = existing?.assignee || "";
+  const previousAssignee = existing ? existing.assignee || "" : "";
   const update = document.querySelector("#updateInput").value.trim();
   const order = {
     id,
@@ -541,12 +541,12 @@ async function saveOrder(event) {
     due: document.querySelector("#dueInput").value,
     hours: Number(document.querySelector("#hoursInput").value),
     details: document.querySelector("#detailsInput").value.trim(),
-    checklist: existing?.checklist || [],
-    startedAt: existing?.startedAt || "",
-    endedAt: existing?.endedAt || "",
-    completedAt: existing?.completedAt || "",
-    updates: existing?.updates || [],
-    attachment: existing?.attachment || null
+    checklist: existing ? existing.checklist || [] : [],
+    startedAt: existing ? existing.startedAt || "" : "",
+    endedAt: existing ? existing.endedAt || "" : "",
+    completedAt: existing ? existing.completedAt || "" : "",
+    updates: existing ? existing.updates || [] : [],
+    attachment: existing ? existing.attachment || null : null
   };
   if (update) order.updates.push(update);
   if (existing) {
@@ -561,7 +561,7 @@ async function saveOrder(event) {
     createAssignmentNotification(order);
   }
   saveData();
-  els.orderDialog.close();
+  closeDialog(els.orderDialog);
   render();
 }
 
@@ -570,7 +570,7 @@ function deleteCurrentOrder() {
   const id = document.querySelector("#orderId").value;
   data.orders = data.orders.filter(order => order.id !== id);
   saveData();
-  els.orderDialog.close();
+  closeDialog(els.orderDialog);
   render();
 }
 
@@ -584,7 +584,7 @@ function saveAsset(event) {
     lastService: document.querySelector("#assetServiceInput").value
   });
   saveData();
-  els.assetDialog.close();
+  closeDialog(els.assetDialog);
   els.assetForm.reset();
   render();
 }
@@ -592,20 +592,20 @@ function saveAsset(event) {
 function openRoutineDialog(routine = null) {
   if (!canManageData()) return;
   document.querySelector("#routineDialogTitle").textContent = routine ? "Edit Routine" : "New Routine";
-  document.querySelector("#routineId").value = routine?.id || "";
-  document.querySelector("#routineTitleInput").value = routine?.title || "";
-  document.querySelector("#routineAssetInput").value = routine?.asset || "";
-  document.querySelector("#routineAreaInput").value = routine?.area || "";
-  document.querySelector("#routineAssigneeInput").value = routine?.assignee || "";
-  document.querySelector("#routineTaskTypeInput").value = routine?.taskType || "Routine Maintenance";
-  document.querySelector("#routineFrequencyInput").value = String(routine?.frequencyDays || 30);
-  document.querySelector("#routineNextDueInput").value = routine?.nextDue || todayOffset(1);
-  document.querySelector("#routinePriorityInput").value = routine?.priority || "Medium";
-  document.querySelector("#routineHoursInput").value = routine?.hours || 1;
-  document.querySelector("#routineChecklistInput").value = (routine?.checklist || []).join("\n");
-  document.querySelector("#routineDetailsInput").value = routine?.details || "";
+  document.querySelector("#routineId").value = routine ? routine.id || "" : "";
+  document.querySelector("#routineTitleInput").value = routine ? routine.title || "" : "";
+  document.querySelector("#routineAssetInput").value = routine ? routine.asset || "" : "";
+  document.querySelector("#routineAreaInput").value = routine ? routine.area || "" : "";
+  document.querySelector("#routineAssigneeInput").value = routine ? routine.assignee || "" : "";
+  document.querySelector("#routineTaskTypeInput").value = routine ? routine.taskType || "Routine Maintenance" : "Routine Maintenance";
+  document.querySelector("#routineFrequencyInput").value = String(routine ? routine.frequencyDays || 30 : 30);
+  document.querySelector("#routineNextDueInput").value = routine ? routine.nextDue || todayOffset(1) : todayOffset(1);
+  document.querySelector("#routinePriorityInput").value = routine ? routine.priority || "Medium" : "Medium";
+  document.querySelector("#routineHoursInput").value = routine ? routine.hours || 1 : 1;
+  document.querySelector("#routineChecklistInput").value = (routine && routine.checklist ? routine.checklist : []).join("\n");
+  document.querySelector("#routineDetailsInput").value = routine ? routine.details || "" : "";
   els.deleteRoutineBtn.style.visibility = routine ? "visible" : "hidden";
-  els.routineDialog.showModal();
+  openDialog(els.routineDialog);
 }
 
 function saveRoutine(event) {
@@ -633,7 +633,7 @@ function saveRoutine(event) {
     data.routines.push(routine);
   }
   saveData();
-  els.routineDialog.close();
+  closeDialog(els.routineDialog);
   render();
 }
 
@@ -642,7 +642,7 @@ function deleteCurrentRoutine() {
   const id = document.querySelector("#routineId").value;
   data.routines = data.routines.filter(routine => routine.id !== id);
   saveData();
-  els.routineDialog.close();
+  closeDialog(els.routineDialog);
   render();
 }
 
@@ -698,7 +698,8 @@ function handleOrderAction(action, id) {
       alert("Please mark every checklist item as Ok or Not ok before submitting.");
       return;
     }
-    const note = document.querySelector(`.completion-update[data-order-id="${CSS.escape(order.id)}"]`)?.value.trim() || "";
+    const noteField = document.querySelector(`.completion-update[data-order-id="${escapeSelectorValue(order.id)}"]`);
+    const note = noteField ? noteField.value.trim() : "";
     if (!note) {
       alert("Please enter the latest update before submitting. Type N/A if there is no issue.");
       return;
@@ -895,7 +896,7 @@ async function savePushSubscription() {
 
 function urlBase64ToUint8Array(value) {
   const padding = "=".repeat((4 - value.length % 4) % 4);
-  const base64 = (value + padding).replaceAll("-", "+").replaceAll("_", "/");
+  const base64 = replaceAllText(replaceAllText(value + padding, "-", "+"), "_", "/");
   const raw = atob(base64);
   return Uint8Array.from([...raw].map(char => char.charCodeAt(0)));
 }
@@ -955,7 +956,7 @@ function isOverdue(order) {
 function groupBy(items, key) {
   return items.reduce((groups, item) => {
     const group = item[key] || "Unassigned";
-    groups[group] ||= [];
+    groups[group] = groups[group] || [];
     groups[group].push(item);
     return groups;
   }, {});
@@ -979,15 +980,46 @@ function empty(text) {
 
 function escapeHtml(value) {
   return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 function escapeAttribute(value) {
-  return escapeHtml(value).replaceAll("`", "&#096;");
+  return escapeHtml(value).replace(/`/g, "&#096;");
+}
+
+function escapeSelectorValue(value) {
+  if (window.CSS && CSS.escape) return CSS.escape(value);
+  return String(value).replace(/\\/g, "\\\\").replace(/"/g, "\\\"");
+}
+
+function replaceAllText(value, search, replacement) {
+  return String(value).split(search).join(replacement);
+}
+
+function cloneData(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function openDialog(dialog) {
+  if (!dialog) return;
+  if (typeof dialog.showModal === "function") {
+    dialog.showModal();
+    return;
+  }
+  dialog.setAttribute("open", "");
+}
+
+function closeDialog(dialog) {
+  if (!dialog) return;
+  if (typeof dialog.close === "function") {
+    dialog.close();
+    return;
+  }
+  dialog.removeAttribute("open");
 }
 
 function readAttachment(file) {
@@ -1015,7 +1047,7 @@ function openProfileDialog() {
   document.querySelector("#userEmailInput").value = data.settings.userEmail || "";
   document.querySelector("#newWorkspaceAdminInput").checked = false;
   document.querySelector("#roleInfo").textContent = profileRoleText(data.settings.userEmail);
-  els.profileDialog.showModal();
+  openDialog(els.profileDialog);
 }
 
 function saveProfile(event) {
@@ -1033,7 +1065,7 @@ function saveProfile(event) {
   }
   data.settings.role = getRoleForEmail(data.settings.userEmail);
   saveData();
-  els.profileDialog.close();
+  closeDialog(els.profileDialog);
   if (!canUseView(activeView)) setView("orders");
   render();
 }
@@ -1067,7 +1099,9 @@ function normalizeEmail(value) {
 }
 
 function getRoleForEmail(email) {
-  return data?.settings?.workspace?.adminEmails?.includes(normalizeEmail(email)) ? "admin" : "user";
+  const workspace = data && data.settings ? data.settings.workspace : null;
+  const admins = workspace && workspace.adminEmails ? workspace.adminEmails : [];
+  return admins.indexOf(normalizeEmail(email)) >= 0 ? "admin" : "user";
 }
 
 function canManageData() {
@@ -1121,7 +1155,7 @@ function normalizeWorkspace(workspace = {}) {
   const merged = { ...defaultWorkspace, ...workspace };
   merged.name = String(merged.name || defaultWorkspace.name).trim();
   merged.databaseOwnerEmail = normalizeEmail(merged.databaseOwnerEmail || defaultWorkspace.databaseOwnerEmail);
-  merged.adminEmails = parseEmailList(merged.adminEmails?.length ? merged.adminEmails : merged.databaseOwnerEmail)
+  merged.adminEmails = parseEmailList(merged.adminEmails && merged.adminEmails.length ? merged.adminEmails : merged.databaseOwnerEmail)
     .filter(Boolean);
   if (!merged.adminEmails.length) merged.adminEmails = [...defaultWorkspace.adminEmails];
   merged.apiUrl = String(merged.apiUrl || "").trim();
@@ -1183,7 +1217,7 @@ function saveWorkspace(event) {
 
 function resetWorkspace() {
   if (!canManageData()) return;
-  data.settings.workspace = structuredClone(defaultWorkspace);
+  data.settings.workspace = cloneData(defaultWorkspace);
   data.settings.role = getRoleForEmail(data.settings.userEmail);
   saveData();
   render();
@@ -1192,11 +1226,11 @@ function resetWorkspace() {
 els.navButtons.forEach(btn => btn.addEventListener("click", () => setView(btn.dataset.view)));
 els.newOrderBtn.addEventListener("click", () => openOrderDialog());
 els.profileBtn.addEventListener("click", openProfileDialog);
-els.closeProfileBtn.addEventListener("click", () => els.profileDialog.close());
-els.cancelProfileBtn.addEventListener("click", () => els.profileDialog.close());
+els.closeProfileBtn.addEventListener("click", () => closeDialog(els.profileDialog));
+els.cancelProfileBtn.addEventListener("click", () => closeDialog(els.profileDialog));
 els.profileForm.addEventListener("submit", saveProfile);
-els.closeDialogBtn.addEventListener("click", () => els.orderDialog.close());
-els.cancelBtn.addEventListener("click", () => els.orderDialog.close());
+els.closeDialogBtn.addEventListener("click", () => closeDialog(els.orderDialog));
+els.cancelBtn.addEventListener("click", () => closeDialog(els.orderDialog));
 els.orderForm.addEventListener("submit", saveOrder);
 els.deleteOrderBtn.addEventListener("click", deleteCurrentOrder);
 els.searchInput.addEventListener("input", renderOrders);
@@ -1209,18 +1243,18 @@ els.enableNotifyBtn.addEventListener("click", async () => {
   await enableNotifications();
 });
 els.installAppBtn.addEventListener("click", installApp);
-els.workspaceForm?.addEventListener("submit", saveWorkspace);
-els.resetWorkspaceBtn?.addEventListener("click", resetWorkspace);
+if (els.workspaceForm) els.workspaceForm.addEventListener("submit", saveWorkspace);
+if (els.resetWorkspaceBtn) els.resetWorkspaceBtn.addEventListener("click", resetWorkspace);
 els.addAssetBtn.addEventListener("click", () => {
   document.querySelector("#assetServiceInput").value = todayOffset(0);
-  els.assetDialog.showModal();
+  openDialog(els.assetDialog);
 });
-els.closeAssetBtn.addEventListener("click", () => els.assetDialog.close());
-els.cancelAssetBtn.addEventListener("click", () => els.assetDialog.close());
+els.closeAssetBtn.addEventListener("click", () => closeDialog(els.assetDialog));
+els.cancelAssetBtn.addEventListener("click", () => closeDialog(els.assetDialog));
 els.assetForm.addEventListener("submit", saveAsset);
 els.newRoutineBtn.addEventListener("click", () => openRoutineDialog());
-els.closeRoutineBtn.addEventListener("click", () => els.routineDialog.close());
-els.cancelRoutineBtn.addEventListener("click", () => els.routineDialog.close());
+els.closeRoutineBtn.addEventListener("click", () => closeDialog(els.routineDialog));
+els.cancelRoutineBtn.addEventListener("click", () => closeDialog(els.routineDialog));
 els.routineForm.addEventListener("submit", saveRoutine);
 els.deleteRoutineBtn.addEventListener("click", deleteCurrentRoutine);
 els.clearNotificationsBtn.addEventListener("click", () => {
