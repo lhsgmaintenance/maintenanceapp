@@ -1,8 +1,11 @@
 const storeKey = "lhMaintenanceData";
 const legacyStoreKey = "maintenanceDeskData";
-const appVersion = "1.2.9";
-const appBuild = "20260516b";
-const defaultApiUrl = "https://script.google.com/macros/s/AKfycbzfsye5T03XaH5YVY27i6Hk7T9frOHYtJ4XRPezG5xLhfQonBdWvjrLaMK0we_5mj0/exec";
+const appVersion = "1.3.0";
+const appBuild = "20260516c";
+const defaultApiUrl = "https://script.google.com/macros/s/AKfycbyOnhU47l57sR2xh0SgpaSR9Vt_dCYKYTQNmtYO1BH5of-5ILLwU_LUkxCkxtsHOmJw/exec";
+const legacyApiUrls = [
+  "https://script.google.com/macros/s/AKfycbzfsye5T03XaH5YVY27i6Hk7T9frOHYtJ4XRPezG5xLhfQonBdWvjrLaMK0we_5mj0/exec"
+];
 const pushConfig = {
   firebaseApiKey: "AIzaSyCbpeDorCWK50tBwbZ3EL8HtMqknyuPpes",
   firebaseAppId: "1:538805424236:web:8343ea16d3ae30232c4849",
@@ -263,7 +266,8 @@ function saveData() {
 
 function backendUrl() {
   const workspace = data.settings && data.settings.workspace ? data.settings.workspace : {};
-  return String(workspace.apiUrl || defaultApiUrl).trim();
+  const url = String(workspace.apiUrl || defaultApiUrl).trim();
+  return legacyApiUrls.includes(url) ? defaultApiUrl : url;
 }
 
 async function loadRemoteData() {
@@ -316,7 +320,7 @@ function mergeRemoteData(remote) {
   data.settings.workspace = normalizeWorkspace({
     ...localWorkspace,
     ...((remote.settings && remote.settings.workspace) || {}),
-    apiUrl: localWorkspace.apiUrl || ((remote.settings && remote.settings.workspace && remote.settings.workspace.apiUrl) || defaultApiUrl)
+    apiUrl: backendUrl()
   });
   data.settings.userEmail = normalizeEmail(data.settings.userEmail || localSettings.userEmail);
   data.settings.username = data.settings.username || localSettings.username || "";
