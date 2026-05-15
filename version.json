@@ -1,5 +1,5 @@
 {
-  "version": "1.2.5",
-  "build": "20260515p",
-  "notes": "Increased auto-sync frequency and immediately disables action buttons to prevent duplicate submissions."
+  "version": "1.2.8",
+  "build": "20260516a",
+  "notes": "Persisted Firebase web and VAPID defaults inside workspace settings."
 }
