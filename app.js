@@ -1,9 +1,13 @@
 const storeKey = "lhMaintenanceData";
 const legacyStoreKey = "maintenanceDeskData";
-const appVersion = "1.2.1";
-const appBuild = "20260515l";
+const appVersion = "1.2.2";
+const appBuild = "20260515m";
 const defaultApiUrl = "https://script.google.com/macros/s/AKfycbzfsye5T03XaH5YVY27i6Hk7T9frOHYtJ4XRPezG5xLhfQonBdWvjrLaMK0we_5mj0/exec";
 const pushConfig = {
+  firebaseApiKey: "",
+  firebaseAppId: "",
+  firebaseProjectId: "",
+  firebaseSenderId: "",
   publicVapidKey: "",
   subscribeEndpoint: ""
 };
@@ -15,7 +19,10 @@ const defaultWorkspace = {
   apiUrl: defaultApiUrl,
   sheetId: "",
   driveFolderId: "",
+  firebaseApiKey: "",
+  firebaseAppId: "",
   firebaseProjectId: "",
+  firebaseSenderId: "",
   vapidPublicKey: ""
 };
 
@@ -137,6 +144,8 @@ let deferredInstallPrompt = null;
 let remoteRefreshTimer = null;
 let remoteRefreshInFlight = false;
 let lastRemoteFingerprint = "";
+let firebaseApp = null;
+let firebaseMessaging = null;
 
 const els = {
   viewTitle: document.querySelector("#viewTitle"),
@@ -179,7 +188,8 @@ const els = {
   appVersion: document.querySelector("#appVersion"),
   updateBanner: document.querySelector("#updateBanner"),
   updateText: document.querySelector("#updateText"),
-  updateAppBtn: document.querySelector("#updateAppBtn")
+  updateAppBtn: document.querySelector("#updateAppBtn"),
+  syncStatus: document.querySelector("#syncStatus")
 };
 
 function todayOffset(days) {
@@ -264,6 +274,7 @@ async function loadRemoteData() {
   mergeRemoteData(payload.data || {});
   announceRemoteChanges(before, remoteSnapshot());
   saveData();
+  updateSyncStatus("ok", `Synced ${formatTimeOnly(new Date())}: ${visibleOrders().length} visible task(s), ${data.orders.length} loaded.`);
   return true;
 }
 
@@ -336,11 +347,19 @@ async function refreshRemoteData({ announceErrors = false } = {}) {
     if (loaded) render();
     return loaded;
   } catch (err) {
+    updateSyncStatus("error", `Sync failed: ${err.message}`);
     if (announceErrors) alert(`Could not refresh Google database: ${err.message}`);
     return false;
   } finally {
     remoteRefreshInFlight = false;
   }
+}
+
+function updateSyncStatus(state, message) {
+  if (!els.syncStatus) return;
+  els.syncStatus.textContent = message;
+  els.syncStatus.classList.toggle("sync-ok", state === "ok");
+  els.syncStatus.classList.toggle("sync-error", state === "error");
 }
 
 function startRemoteRefresh() {
@@ -1238,12 +1257,26 @@ async function checkForAppUpdate() {
     const response = await fetch(`version.json?check=${Date.now()}`, { cache: "no-store" });
     if (!response.ok) return;
     const remote = await response.json();
-    if (!remote.build || remote.build === appBuild) return;
+    if (!remote.build || compareBuild(remote.build, appBuild) <= 0) return;
     els.updateText.textContent = `New version ${remote.version || ""} available.`;
     els.updateBanner.classList.remove("hidden");
   } catch {
     // Update checks are best-effort only.
   }
+}
+
+function compareBuild(left, right) {
+  const a = parseBuild(left);
+  const b = parseBuild(right);
+  if (a.date !== b.date) return a.date > b.date ? 1 : -1;
+  if (a.suffix !== b.suffix) return a.suffix > b.suffix ? 1 : -1;
+  return 0;
+}
+
+function parseBuild(value) {
+  const match = String(value || "").match(/^(\d+)([a-z]*)$/i);
+  if (!match) return { date: String(value || ""), suffix: "" };
+  return { date: match[1], suffix: match[2].toLowerCase() };
 }
 
 async function updateApp() {
@@ -1285,6 +1318,9 @@ async function enableNotifications() {
 }
 
 async function savePushSubscription() {
+  const firebaseSaved = await saveFirebaseMessagingToken();
+  if (firebaseSaved) return;
+
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
   if (!pushConfig.publicVapidKey || !pushConfig.subscribeEndpoint) return;
 
@@ -1297,6 +1333,92 @@ async function savePushSubscription() {
   saveData();
 
   await postRemote("savePushToken", { subscription: data.settings.pushSubscription });
+}
+
+async function saveFirebaseMessagingToken() {
+  if (!firebaseConfigReady()) return false;
+  if (!("serviceWorker" in navigator)) return false;
+  await loadFirebaseSdk();
+  if (!window.firebase || !window.firebase.messaging || !window.firebase.messaging.isSupported()) return false;
+
+  const registration = await navigator.serviceWorker.ready;
+  const messaging = firebaseMessaging || firebase.messaging();
+  firebaseMessaging = messaging;
+  if (!messaging._lhForegroundHandlerAttached) {
+    messaging.onMessage(payload => {
+      const notification = payload.notification || {};
+      const dataPayload = payload.data || {};
+      showBrowserNotification({
+        orderId: dataPayload.orderId || "LH-MAINTENANCE",
+        title: notification.title || dataPayload.title || "LH Maintenance",
+        message: notification.body || dataPayload.body || "You have a maintenance update."
+      });
+    });
+    messaging._lhForegroundHandlerAttached = true;
+  }
+  const token = await messaging.getToken({
+    vapidKey: pushConfig.publicVapidKey,
+    serviceWorkerRegistration: registration
+  });
+  if (!token) return false;
+  data.settings.pushSubscription = {
+    provider: "firebase",
+    token,
+    savedAt: new Date().toISOString()
+  };
+  saveData();
+  await postRemote("savePushToken", {
+    provider: "firebase",
+    token,
+    subscription: data.settings.pushSubscription
+  });
+  return true;
+}
+
+async function loadFirebaseSdk() {
+  if (window.firebase && window.firebase.messaging) {
+    initFirebaseApp();
+    return;
+  }
+  await loadScript("https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js");
+  await loadScript("https://www.gstatic.com/firebasejs/10.12.5/firebase-messaging-compat.js");
+  initFirebaseApp();
+}
+
+function initFirebaseApp() {
+  if (firebaseApp || !window.firebase || !firebaseConfigReady()) return;
+  firebaseApp = firebase.initializeApp(firebaseConfig());
+}
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) {
+      resolve();
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = src;
+    script.onload = resolve;
+    script.onerror = () => reject(new Error(`Could not load ${src}`));
+    document.head.appendChild(script);
+  });
+}
+
+function firebaseConfigReady() {
+  return Boolean(pushConfig.firebaseApiKey
+    && pushConfig.firebaseAppId
+    && pushConfig.firebaseProjectId
+    && pushConfig.firebaseSenderId
+    && pushConfig.publicVapidKey);
+}
+
+function firebaseConfig() {
+  return {
+    apiKey: pushConfig.firebaseApiKey,
+    appId: pushConfig.firebaseAppId,
+    projectId: pushConfig.firebaseProjectId,
+    messagingSenderId: pushConfig.firebaseSenderId
+  };
 }
 
 function urlBase64ToUint8Array(value) {
@@ -1380,6 +1502,13 @@ function formatDateTime(value) {
     year: "numeric",
     month: "short",
     day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function formatTimeOnly(value) {
+  return value.toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit"
   });
@@ -1696,7 +1825,10 @@ function normalizeWorkspace(workspace = {}) {
   merged.apiUrl = String(merged.apiUrl || "").trim();
   merged.sheetId = String(merged.sheetId || "").trim();
   merged.driveFolderId = String(merged.driveFolderId || "").trim();
+  merged.firebaseApiKey = String(merged.firebaseApiKey || "").trim();
+  merged.firebaseAppId = String(merged.firebaseAppId || "").trim();
   merged.firebaseProjectId = String(merged.firebaseProjectId || "").trim();
+  merged.firebaseSenderId = String(merged.firebaseSenderId || "").trim();
   merged.vapidPublicKey = String(merged.vapidPublicKey || "").trim();
   return merged;
 }
@@ -1707,6 +1839,10 @@ function parseEmailList(value) {
 }
 
 function applyWorkspacePushConfig() {
+  pushConfig.firebaseApiKey = data.settings.workspace.firebaseApiKey;
+  pushConfig.firebaseAppId = data.settings.workspace.firebaseAppId;
+  pushConfig.firebaseProjectId = data.settings.workspace.firebaseProjectId;
+  pushConfig.firebaseSenderId = data.settings.workspace.firebaseSenderId;
   pushConfig.publicVapidKey = data.settings.workspace.vapidPublicKey;
   pushConfig.subscribeEndpoint = data.settings.workspace.apiUrl || defaultApiUrl;
 }
@@ -1721,7 +1857,10 @@ function renderWorkspaceForm() {
     apiUrlInput: workspace.apiUrl,
     sheetIdInput: workspace.sheetId,
     driveFolderIdInput: workspace.driveFolderId,
+    firebaseApiKeyInput: workspace.firebaseApiKey,
+    firebaseAppIdInput: workspace.firebaseAppId,
     firebaseProjectIdInput: workspace.firebaseProjectId,
+    firebaseSenderIdInput: workspace.firebaseSenderId,
     vapidKeyInput: workspace.vapidPublicKey
   };
   Object.entries(fields).forEach(([id, value]) => {
@@ -1742,7 +1881,10 @@ function saveWorkspace(event) {
     apiUrl: document.querySelector("#apiUrlInput").value,
     sheetId: document.querySelector("#sheetIdInput").value,
     driveFolderId: document.querySelector("#driveFolderIdInput").value,
+    firebaseApiKey: document.querySelector("#firebaseApiKeyInput").value,
+    firebaseAppId: document.querySelector("#firebaseAppIdInput").value,
     firebaseProjectId: document.querySelector("#firebaseProjectIdInput").value,
+    firebaseSenderId: document.querySelector("#firebaseSenderIdInput").value,
     vapidPublicKey: document.querySelector("#vapidKeyInput").value
   });
   data.settings.role = getRoleForEmail(data.settings.userEmail);

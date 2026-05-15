@@ -17,7 +17,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/lh-icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/lh-icon.svg">
-  <link rel="stylesheet" href="styles.css?v=20260515k">
+  <link rel="stylesheet" href="styles.css?v=20260515m">
 </head>
 <body>
   <div id="startupError" class="startup-error"></div>
@@ -55,6 +55,7 @@
       <span id="updateText">New version available.</span>
       <button id="updateAppBtn" class="primary">Update</button>
     </div>
+    <div id="syncStatus" class="sync-status">Not synced yet.</div>
     <header class="topbar">
       <div>
         <p class="eyebrow">Today</p>
@@ -135,7 +136,7 @@
 
     <section id="notificationsView" class="view">
       <div class="section-head">
-        <h3>Assignment Notifications</h3>
+        <h3>Task Notifications</h3>
         <button id="clearNotificationsBtn" class="secondary">Mark All Read</button>
       </div>
       <div id="notificationsList" class="order-list"></div>
@@ -201,6 +202,9 @@
             <label>Google Sheet ID<input id="sheetIdInput" placeholder="Spreadsheet ID"></label>
             <label>Drive Folder ID<input id="driveFolderIdInput" placeholder="Folder ID for reports and attachments"></label>
             <label>Firebase Project ID<input id="firebaseProjectIdInput" placeholder="Firebase project ID"></label>
+            <label>Firebase API Key<input id="firebaseApiKeyInput" placeholder="AIza..."></label>
+            <label>Firebase App ID<input id="firebaseAppIdInput" placeholder="1:...:web:..."></label>
+            <label>Firebase Sender ID<input id="firebaseSenderIdInput" placeholder="Messaging sender ID"></label>
             <label>Firebase VAPID Public Key<textarea id="vapidKeyInput" rows="4" placeholder="Web Push public key"></textarea></label>
           </div>
           <div class="dialog-actions">
@@ -298,7 +302,7 @@
         <input id="newWorkspaceAdminInput" type="checkbox">
         Create a new branch workspace and make this email the admin
       </label>
-      <p id="roleInfo" class="hint">Stored on this browser for now. Live version will verify this email on the backend.</p>
+      <p id="roleInfo" class="hint">Saved to the shared user directory so admins can assign tasks by username.</p>
       <div class="dialog-actions">
         <span></span>
         <span></span>
@@ -340,7 +344,8 @@
         <label>Task Name<input id="routineTitleInput" required></label>
         <label>Asset<input id="routineAssetInput" required></label>
         <label>Area<input id="routineAreaInput" required></label>
-        <label>Assigned To<input id="routineAssigneeInput" required></label>
+        <label>Assigned To<input id="routineAssigneeInput" list="userList" required></label>
+        <label>Assignee Email<input id="routineAssigneeEmailInput" type="email" placeholder="optional"></label>
         <label>Task Type
           <select id="routineTaskTypeInput">
             <option selected>Routine Maintenance</option>
@@ -378,6 +383,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=20260515k"></script>
+  <script src="app.js?v=20260515m"></script>
 </body>
 </html>

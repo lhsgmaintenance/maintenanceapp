@@ -1,5 +1,5 @@
 {
-  "version": "1.2.0",
-  "build": "20260515k",
-  "notes": "Connected the PWA to the Google Apps Script shared database."
+  "version": "1.2.2",
+  "build": "20260515m",
+  "notes": "Fixed old-version update banner, added sync status, and prepared Firebase Cloud Messaging token registration."
 }

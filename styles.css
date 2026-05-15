@@ -150,6 +150,21 @@ button {
   font-weight: 700;
 }
 
+.sync-status {
+  margin: -6px 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.sync-status.sync-ok {
+  color: var(--accent-dark);
+}
+
+.sync-status.sync-error {
+  color: var(--danger);
+  font-weight: 700;
+}
+
 .top-actions {
   margin-bottom: 0;
 }
@@ -258,7 +273,7 @@ button:disabled {
   grid-column: 1 / -1;
 }
 
-.order-list, .timeline, .team-grid {
+.order-list, .timeline, .team-grid, .team-grid-inner, .user-directory {
   display: grid;
   gap: 10px;
 }
@@ -562,11 +577,28 @@ button:disabled {
 }
 
 .team-grid {
+  grid-template-columns: 1fr;
+}
+
+.team-grid-inner,
+.user-directory {
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+}
+
+.team-subhead {
+  margin: 8px 0 0;
+}
+
+.user-directory {
+  margin-bottom: 14px;
 }
 
 .team-card {
   padding: 14px;
+}
+
+.user-card {
+  align-content: start;
 }
 
 .team-card h4 {
