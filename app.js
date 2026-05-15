@@ -1,7 +1,7 @@
 const storeKey = "lhMaintenanceData";
 const legacyStoreKey = "maintenanceDeskData";
-const appVersion = "1.3.1";
-const appBuild = "20260516d";
+const appVersion = "1.3.2";
+const appBuild = "20260516e";
 const defaultApiUrl = "https://script.google.com/macros/s/AKfycbyOnhU47l57sR2xh0SgpaSR9Vt_dCYKYTQNmtYO1BH5of-5ILLwU_LUkxCkxtsHOmJw/exec";
 const legacyApiUrls = [
   "https://script.google.com/macros/s/AKfycbzfsye5T03XaH5YVY27i6Hk7T9frOHYtJ4XRPezG5xLhfQonBdWvjrLaMK0we_5mj0/exec"
@@ -1896,14 +1896,14 @@ function normalizeWorkspace(workspace = {}) {
   merged.adminEmails = parseEmailList(merged.adminEmails && merged.adminEmails.length ? merged.adminEmails : merged.databaseOwnerEmail)
     .filter(Boolean);
   if (!merged.adminEmails.length) merged.adminEmails = [...defaultWorkspace.adminEmails];
-  merged.apiUrl = String(merged.apiUrl || "").trim();
+  merged.apiUrl = String(merged.apiUrl || defaultWorkspace.apiUrl).trim();
   merged.sheetId = String(merged.sheetId || "").trim();
   merged.driveFolderId = String(merged.driveFolderId || "").trim();
-  merged.firebaseApiKey = String(merged.firebaseApiKey || "").trim();
-  merged.firebaseAppId = String(merged.firebaseAppId || "").trim();
-  merged.firebaseProjectId = String(merged.firebaseProjectId || "").trim();
-  merged.firebaseSenderId = String(merged.firebaseSenderId || "").trim();
-  merged.vapidPublicKey = String(merged.vapidPublicKey || "").trim();
+  merged.firebaseApiKey = String(merged.firebaseApiKey || defaultWorkspace.firebaseApiKey).trim();
+  merged.firebaseAppId = String(merged.firebaseAppId || defaultWorkspace.firebaseAppId).trim();
+  merged.firebaseProjectId = String(merged.firebaseProjectId || defaultWorkspace.firebaseProjectId).trim();
+  merged.firebaseSenderId = String(merged.firebaseSenderId || defaultWorkspace.firebaseSenderId).trim();
+  merged.vapidPublicKey = String(merged.vapidPublicKey || defaultWorkspace.vapidPublicKey).trim();
   return merged;
 }
 
