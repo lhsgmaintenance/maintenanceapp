@@ -176,9 +176,13 @@ function todayOffset(days) {
 }
 
 function loadData() {
-  const stored = localStorage.getItem(storeKey) || localStorage.getItem(legacyStoreKey);
-  const loaded = stored ? JSON.parse(stored) : structuredClone(seedData);
-  return normalizeData(loaded);
+  try {
+    const stored = localStorage.getItem(storeKey) || localStorage.getItem(legacyStoreKey);
+    const loaded = stored ? JSON.parse(stored) : structuredClone(seedData);
+    return normalizeData(loaded);
+  } catch {
+    return normalizeData(structuredClone(seedData));
+  }
 }
 
 function normalizeData(loaded) {
@@ -220,6 +224,7 @@ function saveData() {
 }
 
 function render() {
+  data = normalizeData(data);
   data.settings.role = getRoleForEmail(data.settings.userEmail);
   applyWorkspacePushConfig();
   renderAccessControls();
@@ -1140,15 +1145,22 @@ function applyWorkspacePushConfig() {
 function renderWorkspaceForm() {
   if (!els.workspaceForm) return;
   const workspace = data.settings.workspace;
-  document.querySelector("#workspaceNameInput").value = workspace.name;
-  document.querySelector("#databaseOwnerInput").value = workspace.databaseOwnerEmail;
-  document.querySelector("#adminEmailsInput").value = workspace.adminEmails.join("\n");
-  document.querySelector("#apiUrlInput").value = workspace.apiUrl;
-  document.querySelector("#sheetIdInput").value = workspace.sheetId;
-  document.querySelector("#driveFolderIdInput").value = workspace.driveFolderId;
-  document.querySelector("#firebaseProjectIdInput").value = workspace.firebaseProjectId;
-  document.querySelector("#vapidKeyInput").value = workspace.vapidPublicKey;
-  document.querySelector("#workspaceStatus").textContent = `Active workspace: ${workspace.name}`;
+  const fields = {
+    workspaceNameInput: workspace.name,
+    databaseOwnerInput: workspace.databaseOwnerEmail,
+    adminEmailsInput: workspace.adminEmails.join("\n"),
+    apiUrlInput: workspace.apiUrl,
+    sheetIdInput: workspace.sheetId,
+    driveFolderIdInput: workspace.driveFolderId,
+    firebaseProjectIdInput: workspace.firebaseProjectId,
+    vapidKeyInput: workspace.vapidPublicKey
+  };
+  Object.entries(fields).forEach(([id, value]) => {
+    const field = document.querySelector(`#${id}`);
+    if (field) field.value = value;
+  });
+  const status = document.querySelector("#workspaceStatus");
+  if (status) status.textContent = `Active workspace: ${workspace.name}`;
 }
 
 function saveWorkspace(event) {
@@ -1197,8 +1209,8 @@ els.enableNotifyBtn.addEventListener("click", async () => {
   await enableNotifications();
 });
 els.installAppBtn.addEventListener("click", installApp);
-els.workspaceForm.addEventListener("submit", saveWorkspace);
-els.resetWorkspaceBtn.addEventListener("click", resetWorkspace);
+els.workspaceForm?.addEventListener("submit", saveWorkspace);
+els.resetWorkspaceBtn?.addEventListener("click", resetWorkspace);
 els.addAssetBtn.addEventListener("click", () => {
   document.querySelector("#assetServiceInput").value = todayOffset(0);
   els.assetDialog.showModal();
