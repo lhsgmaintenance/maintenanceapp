@@ -1,12 +1,13 @@
 const storeKey = "lhMaintenanceData";
 const legacyStoreKey = "maintenanceDeskData";
-const appVersion = "1.2.0";
-const appBuild = "20260515k";
+const appVersion = "1.2.1";
+const appBuild = "20260515l";
 const defaultApiUrl = "https://script.google.com/macros/s/AKfycbzfsye5T03XaH5YVY27i6Hk7T9frOHYtJ4XRPezG5xLhfQonBdWvjrLaMK0we_5mj0/exec";
 const pushConfig = {
   publicVapidKey: "",
   subscribeEndpoint: ""
 };
+const remoteRefreshMs = 30000;
 const defaultWorkspace = {
   name: "LHSG Maintenance",
   databaseOwnerEmail: "lhsgmaintenance@gmail.com",
@@ -133,6 +134,9 @@ const seedData = {
 let data = loadData();
 let activeView = "dashboard";
 let deferredInstallPrompt = null;
+let remoteRefreshTimer = null;
+let remoteRefreshInFlight = false;
+let lastRemoteFingerprint = "";
 
 const els = {
   viewTitle: document.querySelector("#viewTitle"),
@@ -222,8 +226,19 @@ function normalizeData(loaded) {
     order.adminEmail = normalizeEmail(order.adminEmail);
     order.attachment = order.attachment || null;
   });
+  loaded.notifications.forEach(note => {
+    note.type = note.type || "assignment";
+    note.assigneeEmail = normalizeEmail(note.assigneeEmail);
+    note.adminEmail = normalizeEmail(note.adminEmail);
+    note.recipients = Array.isArray(note.recipients) ? note.recipients.map(normalizeEmail).filter(Boolean) : [];
+    if (!note.recipients.length) {
+      note.recipients = [note.assigneeEmail, note.adminEmail, ...loaded.settings.workspace.adminEmails].map(normalizeEmail).filter(Boolean);
+    }
+    note.read = Boolean(note.read);
+  });
   loaded.routines.forEach(routine => {
     routine.taskType = routine.taskType || "Routine Maintenance";
+    routine.assigneeEmail = normalizeEmail(routine.assigneeEmail);
     routine.checklist = routine.checklist || (routine.details
       ? routine.details.split(",").map(item => item.trim()).filter(Boolean)
       : []);
@@ -242,10 +257,12 @@ function backendUrl() {
 async function loadRemoteData() {
   const url = backendUrl();
   if (!url || !data.settings.userEmail) return false;
+  const before = remoteSnapshot();
   const response = await fetch(`${url}?action=load&email=${encodeURIComponent(data.settings.userEmail)}&t=${Date.now()}`);
   const payload = await response.json();
   if (!payload.ok) throw new Error(payload.error || "Backend load failed.");
   mergeRemoteData(payload.data || {});
+  announceRemoteChanges(before, remoteSnapshot());
   saveData();
   return true;
 }
@@ -273,10 +290,12 @@ async function postRemote(action, body = {}) {
 function mergeRemoteData(remote) {
   const localSettings = data.settings || {};
   const localWorkspace = localSettings.workspace || {};
+  const localUsers = normalizeUsers(localSettings.users || []);
+  const localNotifications = data.notifications || [];
   data.orders = remote.orders || [];
   data.assets = remote.assets || [];
   data.routines = remote.routines || [];
-  data.notifications = remote.notifications || [];
+  data.notifications = mergeNotifications(remote.notifications || [], localNotifications);
   data.settings = {
     ...localSettings,
     ...(remote.settings || {})
@@ -288,7 +307,7 @@ function mergeRemoteData(remote) {
   });
   data.settings.userEmail = normalizeEmail(data.settings.userEmail || localSettings.userEmail);
   data.settings.username = data.settings.username || localSettings.username || "";
-  data.settings.users = normalizeUsers(data.settings.users || localSettings.users || []);
+  data.settings.users = mergeUsers(data.settings.users || [], localUsers);
   data.settings.role = getRoleForEmail(data.settings.userEmail, data.settings.workspace);
 }
 
@@ -307,6 +326,125 @@ async function syncAllAdmin() {
   } catch (err) {
     alert(`Could not sync admin changes to Google database: ${err.message}`);
   }
+}
+
+async function refreshRemoteData({ announceErrors = false } = {}) {
+  if (remoteRefreshInFlight || !backendUrl() || !data.settings.userEmail) return false;
+  remoteRefreshInFlight = true;
+  try {
+    const loaded = await loadRemoteData();
+    if (loaded) render();
+    return loaded;
+  } catch (err) {
+    if (announceErrors) alert(`Could not refresh Google database: ${err.message}`);
+    return false;
+  } finally {
+    remoteRefreshInFlight = false;
+  }
+}
+
+function startRemoteRefresh() {
+  if (remoteRefreshTimer) clearInterval(remoteRefreshTimer);
+  if (!backendUrl() || !data.settings.userEmail) return;
+  remoteRefreshTimer = setInterval(() => {
+    refreshRemoteData();
+  }, remoteRefreshMs);
+}
+
+function remoteSnapshot() {
+  const orders = {};
+  data.orders.forEach(order => {
+    orders[order.id] = {
+      title: order.title,
+      status: order.status,
+      assignee: order.assignee,
+      assigneeEmail: normalizeEmail(order.assigneeEmail),
+      adminEmail: normalizeEmail(order.adminEmail),
+      updateCount: (order.updates || []).length,
+      latestUpdate: (order.updates || []).slice(-1)[0] || ""
+    };
+  });
+  return {
+    fingerprint: JSON.stringify({
+      orders,
+      notifications: data.notifications.map(note => note.id).sort(),
+      users: data.settings.users
+    }),
+    orders
+  };
+}
+
+function announceRemoteChanges(before, after) {
+  if (!before || !after || !lastRemoteFingerprint) {
+    lastRemoteFingerprint = after ? after.fingerprint : "";
+    return;
+  }
+  if (before.fingerprint === after.fingerprint) return;
+  Object.entries(after.orders).forEach(([id, order]) => {
+    const previous = before.orders[id];
+    if (!previous && isOrderAssignedToEmail(order, data.settings.userEmail)) {
+      addLocalNotification({
+        type: "assignment",
+        assignee: order.assignee,
+        assigneeEmail: order.assigneeEmail,
+        adminEmail: order.adminEmail,
+        recipients: notificationRecipients(order),
+        orderId: id,
+        title: `New task: ${order.title}`,
+        message: `${id} has been assigned to you.`
+      });
+      return;
+    }
+    if (!previous) return;
+    const statusChanged = previous.status !== order.status;
+    const updateAdded = Number(previous.updateCount || 0) < Number(order.updateCount || 0);
+    if ((statusChanged || updateAdded) && shouldNotifyAboutOrder(order)) {
+      addLocalNotification({
+        type: "status",
+        assignee: order.assignee,
+        assigneeEmail: order.assigneeEmail,
+        adminEmail: order.adminEmail,
+        recipients: notificationRecipients(order),
+        orderId: id,
+        title: `Updated: ${order.title}`,
+        message: statusChanged
+          ? `${id} changed from ${previous.status} to ${order.status}.`
+          : `${id} has a new update.`
+      });
+    }
+  });
+  lastRemoteFingerprint = after.fingerprint;
+}
+
+function addLocalNotification(details) {
+  const notification = {
+    id: details.id || nextNotificationId(),
+    type: details.type || "status",
+    assignee: details.assignee || "",
+    assigneeEmail: normalizeEmail(details.assigneeEmail),
+    adminEmail: normalizeEmail(details.adminEmail),
+    recipients: Array.isArray(details.recipients) ? details.recipients.map(normalizeEmail).filter(Boolean) : [],
+    orderId: details.orderId || "",
+    title: details.title || "LH Maintenance update",
+    message: details.message || "A maintenance task was updated.",
+    createdAt: details.createdAt || new Date().toISOString(),
+    read: Boolean(details.read)
+  };
+  const duplicate = data.notifications.some(note => note.orderId === notification.orderId
+    && note.type === notification.type
+    && note.message === notification.message);
+  if (duplicate) return;
+  data.notifications.unshift(notification);
+  showBrowserNotification(notification);
+}
+
+function mergeNotifications(primaryNotifications, fallbackNotifications) {
+  const byKey = {};
+  [...(fallbackNotifications || []), ...(primaryNotifications || [])].forEach(note => {
+    const key = note.id || `${note.orderId || ""}|${note.type || ""}|${note.message || ""}`;
+    byKey[key] = note;
+  });
+  return Object.values(byKey).sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
 }
 
 function render() {
@@ -471,7 +609,7 @@ function routineDatesForMonth(routine, year, month) {
 }
 
 function renderNotifications() {
-  const notifications = [...data.notifications].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const notifications = visibleNotifications().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   document.querySelector("#notificationsList").innerHTML = notifications.length
     ? notifications.map(note => `<article class="order-card notification-card ${note.read ? "" : "unread"}" data-notification-id="${escapeHtml(note.id)}">
         <header>
@@ -489,7 +627,7 @@ function renderNotifications() {
 function renderTeam() {
   const team = groupBy(data.orders.filter(o => o.status !== "Completed"), "assignee");
   const names = Object.keys(team).sort();
-  document.querySelector("#teamGrid").innerHTML = names.length
+  const activeAssignments = names.length
     ? names.map(name => {
       const jobs = team[name].sort((a, b) => a.due.localeCompare(b.due));
       const hours = jobs.reduce((sum, job) => sum + Number(job.hours || 0), 0);
@@ -500,6 +638,21 @@ function renderTeam() {
       </article>`;
     }).join("")
     : empty("No active team assignments.");
+  const registeredUsers = data.settings.users.length
+    ? `<div class="user-directory">${data.settings.users.map(user => {
+      const jobs = data.orders.filter(order => normalizeEmail(order.assigneeEmail) === normalizeEmail(user.email) && order.status !== "Completed").length;
+      return `<article class="team-card user-card">
+        <h4>${escapeHtml(user.username)}</h4>
+        <p class="meta">${escapeHtml(user.email)}</p>
+        <span class="table-pill Medium">${jobs} active</span>
+      </article>`;
+    }).join("")}</div>`
+    : empty("No registered users yet. Users are added when they save their profile.");
+  document.querySelector("#teamGrid").innerHTML = `
+    <div class="section-head team-subhead"><h3>Active Assignments</h3></div>
+    <div class="team-grid-inner">${activeAssignments}</div>
+    <div class="section-head team-subhead"><h3>Registered Users</h3></div>
+    ${registeredUsers}`;
 }
 
 function renderAssets() {
@@ -763,6 +916,7 @@ function openRoutineDialog(routine = null) {
   document.querySelector("#routineAssetInput").value = routine ? routine.asset || "" : "";
   document.querySelector("#routineAreaInput").value = routine ? routine.area || "" : "";
   document.querySelector("#routineAssigneeInput").value = routine ? routine.assignee || "" : "";
+  document.querySelector("#routineAssigneeEmailInput").value = routine ? routine.assigneeEmail || "" : "";
   document.querySelector("#routineTaskTypeInput").value = routine ? routine.taskType || "Routine Maintenance" : "Routine Maintenance";
   document.querySelector("#routineFrequencyInput").value = String(routine ? routine.frequencyDays || 30 : 30);
   document.querySelector("#routineNextDueInput").value = routine ? routine.nextDue || todayOffset(1) : todayOffset(1);
@@ -779,12 +933,14 @@ async function saveRoutine(event) {
   if (!canManageData()) return;
   const id = document.querySelector("#routineId").value || nextRoutineId();
   const existing = data.routines.find(routine => routine.id === id);
+  applyRoutineAssigneeUserMatch();
   const routine = {
     id,
     title: document.querySelector("#routineTitleInput").value.trim(),
     asset: document.querySelector("#routineAssetInput").value.trim(),
     area: document.querySelector("#routineAreaInput").value.trim(),
     assignee: document.querySelector("#routineAssigneeInput").value.trim(),
+    assigneeEmail: normalizeEmail(document.querySelector("#routineAssigneeEmailInput").value),
     taskType: document.querySelector("#routineTaskTypeInput").value,
     frequencyDays: Number(document.querySelector("#routineFrequencyInput").value),
     nextDue: document.querySelector("#routineNextDueInput").value,
@@ -824,7 +980,7 @@ async function generateOrderFromRoutine(id) {
     asset: routine.asset,
     area: routine.area,
     assignee: routine.assignee,
-    assigneeEmail: "",
+    assigneeEmail: normalizeEmail(routine.assigneeEmail),
     adminEmail: data.settings.userEmail || "",
     taskType: routine.taskType || "Routine Maintenance",
     priority: routine.priority,
@@ -858,10 +1014,12 @@ async function handleOrderAction(action, id) {
     order.startedAt = now;
     order.status = "In Progress";
     order.updates.push(`Work started at ${formatDateTime(now)}.`);
+    createStatusNotification(order, `${order.id} was started by ${order.assignee}.`);
   }
   if (action === "end") {
     order.endedAt = now;
     order.updates.push(`Work ended at ${formatDateTime(now)}.`);
+    createStatusNotification(order, `${order.id} work ended. Waiting for completion submission.`);
   }
   if (action === "submit") {
     if (order.checklist.length && !order.checklist.every(item => item.status)) {
@@ -882,6 +1040,7 @@ async function handleOrderAction(action, id) {
     if (order.adminEmail) {
       order.updates.push(`Live version email target: ${order.adminEmail}.`);
     }
+    createStatusNotification(order, `${order.id} was completed by ${order.assignee}.`);
     saveData();
     await syncOrder(order);
     render();
@@ -970,8 +1129,11 @@ function openCompletionReport(order) {
 function createAssignmentNotification(order) {
   const notification = {
     id: nextNotificationId(),
+    type: "assignment",
     assignee: order.assignee,
     assigneeEmail: normalizeEmail(order.assigneeEmail),
+    adminEmail: normalizeEmail(order.adminEmail),
+    recipients: notificationRecipients(order),
     orderId: order.id,
     title: `Assigned: ${order.title}`,
     message: `${order.id} has been assigned to ${order.assignee}. Due date: ${order.due}.${order.assigneeEmail ? ` Email: ${order.assigneeEmail}.` : ""}`,
@@ -980,6 +1142,52 @@ function createAssignmentNotification(order) {
   };
   data.notifications.unshift(notification);
   showBrowserNotification(notification);
+}
+
+function createStatusNotification(order, message) {
+  const notification = {
+    id: nextNotificationId(),
+    type: "status",
+    assignee: order.assignee,
+    assigneeEmail: normalizeEmail(order.assigneeEmail),
+    adminEmail: normalizeEmail(order.adminEmail),
+    recipients: notificationRecipients(order),
+    orderId: order.id,
+    title: `Updated: ${order.title}`,
+    message,
+    createdAt: new Date().toISOString(),
+    read: false
+  };
+  data.notifications.unshift(notification);
+  showBrowserNotification(notification);
+}
+
+function notificationRecipients(order) {
+  return [...new Set([
+    normalizeEmail(order.assigneeEmail),
+    normalizeEmail(order.adminEmail),
+    ...((data.settings.workspace && data.settings.workspace.adminEmails) || []).map(normalizeEmail)
+  ].filter(Boolean))];
+}
+
+function visibleNotifications() {
+  const currentEmail = normalizeEmail(data.settings.userEmail);
+  if (canManageData()) return [...data.notifications];
+  if (!currentEmail) return [];
+  return data.notifications.filter(note => {
+    const recipients = Array.isArray(note.recipients) ? note.recipients.map(normalizeEmail) : [];
+    return recipients.includes(currentEmail)
+      || normalizeEmail(note.assigneeEmail) === currentEmail
+      || normalizeEmail(note.adminEmail) === currentEmail;
+  });
+}
+
+function shouldNotifyAboutOrder(order) {
+  const currentEmail = normalizeEmail(data.settings.userEmail);
+  if (!currentEmail) return false;
+  return canManageData()
+    || normalizeEmail(order.assigneeEmail) === currentEmail
+    || normalizeEmail(order.adminEmail) === currentEmail;
 }
 
 function showBrowserNotification(notification) {
@@ -1021,12 +1229,8 @@ async function initPwa() {
   });
 
   checkForAppUpdate();
-  try {
-    await loadRemoteData();
-    render();
-  } catch {
-    // Local storage remains available when the live backend cannot be reached.
-  }
+  await refreshRemoteData();
+  startRemoteRefresh();
 }
 
 async function checkForAppUpdate() {
@@ -1315,6 +1519,7 @@ async function saveProfile(event) {
   closeDialog(els.profileDialog);
   if (!canUseView(activeView)) setView("orders");
   render();
+  startRemoteRefresh();
 }
 
 function exportData() {
@@ -1432,6 +1637,10 @@ function normalizeUsers(users) {
   return Object.values(byEmail).sort((a, b) => a.username.localeCompare(b.username));
 }
 
+function mergeUsers(primaryUsers, fallbackUsers) {
+  return normalizeUsers([...(fallbackUsers || []), ...(primaryUsers || [])]);
+}
+
 function upsertUser(username, email) {
   const normalizedEmail = normalizeEmail(email);
   const normalizedUsername = String(username || "").trim();
@@ -1454,6 +1663,16 @@ function findUserByUsername(username) {
 function applyAssigneeUserMatch() {
   const nameField = document.querySelector("#assigneeInput");
   const emailField = document.querySelector("#assigneeEmailInput");
+  if (!nameField || !emailField) return;
+  const user = findUserByUsername(nameField.value);
+  if (!user) return;
+  nameField.value = user.username;
+  emailField.value = user.email;
+}
+
+function applyRoutineAssigneeUserMatch() {
+  const nameField = document.querySelector("#routineAssigneeInput");
+  const emailField = document.querySelector("#routineAssigneeEmailInput");
   if (!nameField || !emailField) return;
   const user = findUserByUsername(nameField.value);
   if (!user) return;
@@ -1554,6 +1773,8 @@ els.statusFilter.addEventListener("change", renderOrders);
 els.priorityFilter.addEventListener("change", renderOrders);
 document.querySelector("#assigneeInput").addEventListener("change", applyAssigneeUserMatch);
 document.querySelector("#assigneeInput").addEventListener("blur", applyAssigneeUserMatch);
+document.querySelector("#routineAssigneeInput").addEventListener("change", applyRoutineAssigneeUserMatch);
+document.querySelector("#routineAssigneeInput").addEventListener("blur", applyRoutineAssigneeUserMatch);
 els.exportBtn.addEventListener("click", exportData);
 els.importFile.addEventListener("change", importData);
 els.printBtn.addEventListener("click", () => window.print());
@@ -1662,6 +1883,14 @@ document.body.addEventListener("input", event => {
   if (!order) return;
   order.draftUpdate = updateField.value;
   saveData();
+});
+
+window.addEventListener("focus", () => {
+  refreshRemoteData();
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") refreshRemoteData();
 });
 
 setView(activeView);
