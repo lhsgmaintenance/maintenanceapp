@@ -4,6 +4,7 @@ const pushConfig = {
   publicVapidKey: "",
   subscribeEndpoint: ""
 };
+const adminEmails = ["lhsgmaintenance@gmail.com"];
 
 const seedData = {
   orders: [
@@ -109,6 +110,7 @@ const seedData = {
   ],
   settings: {
     userEmail: "",
+    role: "user",
     pushSubscription: null
   }
 };
@@ -151,7 +153,8 @@ const els = {
   cancelRoutineBtn: document.querySelector("#cancelRoutineBtn"),
   deleteRoutineBtn: document.querySelector("#deleteRoutineBtn"),
   clearNotificationsBtn: document.querySelector("#clearNotificationsBtn"),
-  installAppBtn: document.querySelector("#installAppBtn")
+  installAppBtn: document.querySelector("#installAppBtn"),
+  roleStatus: document.querySelector("#roleStatus")
 };
 
 function todayOffset(days) {
@@ -173,6 +176,7 @@ function normalizeData(loaded) {
   loaded.notifications ||= [];
   loaded.settings ||= {};
   loaded.settings.userEmail ||= "";
+  loaded.settings.role = getRoleForEmail(loaded.settings.userEmail);
   loaded.settings.pushSubscription ||= null;
   loaded.orders.forEach(order => {
     order.taskType ||= order.id?.startsWith("WO-1003") ? "Routine Maintenance" : "Breakdown";
@@ -203,6 +207,8 @@ function saveData() {
 }
 
 function render() {
+  data.settings.role = getRoleForEmail(data.settings.userEmail);
+  renderAccessControls();
   renderDashboard();
   renderOrders();
   renderRoutines();
@@ -213,6 +219,7 @@ function render() {
 }
 
 function setView(view) {
+  if (!canUseView(view)) view = "orders";
   activeView = view;
   els.viewTitle.textContent = viewLabels[view];
   els.navButtons.forEach(btn => btn.classList.toggle("active", btn.dataset.view === view));
@@ -231,16 +238,17 @@ const viewLabels = {
 };
 
 function renderDashboard() {
-  const open = data.orders.filter(o => o.status === "Open").length;
-  const progress = data.orders.filter(o => o.status === "In Progress").length;
-  const overdue = data.orders.filter(o => isOverdue(o)).length;
-  const done = data.orders.filter(o => o.status === "Completed").length;
+  const orders = visibleOrders();
+  const open = orders.filter(o => o.status === "Open").length;
+  const progress = orders.filter(o => o.status === "In Progress").length;
+  const overdue = orders.filter(o => isOverdue(o)).length;
+  const done = orders.filter(o => o.status === "Completed").length;
   setText("statOpen", open);
   setText("statProgress", progress);
   setText("statOverdue", overdue);
   setText("statDone", done);
 
-  const urgent = data.orders
+  const urgent = orders
     .filter(o => o.status !== "Completed" && ["Critical", "High"].includes(o.priority))
     .sort((a, b) => a.due.localeCompare(b.due))
     .slice(0, 5);
@@ -248,7 +256,7 @@ function renderDashboard() {
     ? urgent.map(orderCard).join("")
     : empty("No urgent open jobs.");
 
-  const schedule = data.orders
+  const schedule = orders
     .filter(o => o.status !== "Completed")
     .sort((a, b) => a.due.localeCompare(b.due))
     .slice(0, 6);
@@ -261,7 +269,7 @@ function renderOrders() {
   const query = els.searchInput.value.trim().toLowerCase();
   const status = els.statusFilter.value;
   const priority = els.priorityFilter.value;
-  const filtered = data.orders.filter(order => {
+  const filtered = visibleOrders().filter(order => {
     const text = `${order.id} ${order.title} ${order.asset} ${order.area} ${order.assignee}`.toLowerCase();
     return (!query || text.includes(query))
       && (status === "all" || order.status === status)
@@ -391,6 +399,8 @@ function renderBarReport(id, counts) {
 }
 
 function orderCard(order) {
+  const editable = canEditOrder(order);
+  const manageable = canManageData();
   const overdue = isOverdue(order) ? "Overdue" : order.due;
   const latest = order.updates.length ? order.updates[order.updates.length - 1] : order.details;
   const emailMeta = [order.assigneeEmail, order.adminEmail].filter(Boolean).join(" | ");
@@ -401,9 +411,9 @@ function orderCard(order) {
   const timing = order.startedAt
     ? `Started ${formatDateTime(order.startedAt)}${order.endedAt ? ` | Ended ${formatDateTime(order.endedAt)}` : ""}`
     : "Not started";
-  const canStart = order.status !== "Completed" && !order.startedAt;
-  const canEnd = order.status !== "Completed" && order.startedAt && !order.endedAt;
-  const canSubmit = order.status !== "Completed" && order.startedAt && order.endedAt;
+  const canStart = editable && order.status !== "Completed" && !order.startedAt;
+  const canEnd = editable && order.status !== "Completed" && order.startedAt && !order.endedAt;
+  const canSubmit = editable && order.status !== "Completed" && order.startedAt && order.endedAt;
   const checklistHtml = order.checklist.length
     ? `<div class="checklist">
         ${order.checklist.map((item, index) => `<div class="check-row">
@@ -413,7 +423,7 @@ function orderCard(order) {
         </div>`).join("")}
       </div>`
     : "";
-  return `<article class="order-card" data-order-id="${escapeHtml(order.id)}">
+  return `<article class="order-card ${manageable ? "" : "readonly-card"}" data-order-id="${escapeHtml(order.id)}">
     <header>
       <div>
         <h4>${escapeHtml(order.id)} - ${escapeHtml(order.title)}</h4>
@@ -432,7 +442,7 @@ function orderCard(order) {
     <div class="work-actions">
       <label class="secondary attachment-control">
         ${escapeHtml(attachmentLabel)}
-        <input class="work-attachment-input" data-order-id="${escapeHtml(order.id)}" type="file" ${order.status === "Completed" ? "disabled" : ""}>
+        <input class="work-attachment-input" data-order-id="${escapeHtml(order.id)}" type="file" ${editable && order.status !== "Completed" ? "" : "disabled"}>
       </label>
       <button class="secondary order-action" data-action="start" data-order-id="${escapeHtml(order.id)}" ${canStart ? "" : "disabled"}>Start</button>
       <button class="secondary order-action" data-action="end" data-order-id="${escapeHtml(order.id)}" ${canEnd ? "" : "disabled"}>End</button>
@@ -470,6 +480,7 @@ function routineCard(routine) {
 }
 
 function openOrderDialog(order = null) {
+  if (!canManageData()) return;
   document.querySelector("#dialogTitle").textContent = order ? "Edit Work Order" : "New Work Order";
   document.querySelector("#orderId").value = order?.id || "";
   document.querySelector("#titleInput").value = order?.title || "";
@@ -491,6 +502,7 @@ function openOrderDialog(order = null) {
 
 async function saveOrder(event) {
   event.preventDefault();
+  if (!canManageData()) return;
   const id = document.querySelector("#orderId").value || nextOrderId();
   const existing = data.orders.find(order => order.id === id);
   const previousAssignee = existing?.assignee || "";
@@ -534,6 +546,7 @@ async function saveOrder(event) {
 }
 
 function deleteCurrentOrder() {
+  if (!canManageData()) return;
   const id = document.querySelector("#orderId").value;
   data.orders = data.orders.filter(order => order.id !== id);
   saveData();
@@ -543,6 +556,7 @@ function deleteCurrentOrder() {
 
 function saveAsset(event) {
   event.preventDefault();
+  if (!canManageData()) return;
   data.assets.push({
     name: document.querySelector("#assetNameInput").value.trim(),
     area: document.querySelector("#assetAreaInput").value.trim(),
@@ -556,6 +570,7 @@ function saveAsset(event) {
 }
 
 function openRoutineDialog(routine = null) {
+  if (!canManageData()) return;
   document.querySelector("#routineDialogTitle").textContent = routine ? "Edit Routine" : "New Routine";
   document.querySelector("#routineId").value = routine?.id || "";
   document.querySelector("#routineTitleInput").value = routine?.title || "";
@@ -575,6 +590,7 @@ function openRoutineDialog(routine = null) {
 
 function saveRoutine(event) {
   event.preventDefault();
+  if (!canManageData()) return;
   const id = document.querySelector("#routineId").value || nextRoutineId();
   const existing = data.routines.find(routine => routine.id === id);
   const routine = {
@@ -602,6 +618,7 @@ function saveRoutine(event) {
 }
 
 function deleteCurrentRoutine() {
+  if (!canManageData()) return;
   const id = document.querySelector("#routineId").value;
   data.routines = data.routines.filter(routine => routine.id !== id);
   saveData();
@@ -610,6 +627,7 @@ function deleteCurrentRoutine() {
 }
 
 function generateOrderFromRoutine(id) {
+  if (!canManageData()) return;
   const routine = data.routines.find(item => item.id === id);
   if (!routine) return;
   const order = {
@@ -644,6 +662,7 @@ function generateOrderFromRoutine(id) {
 function handleOrderAction(action, id) {
   const order = data.orders.find(item => item.id === id);
   if (!order) return;
+  if (action !== "pdf" && !canEditOrder(order)) return;
   const now = new Date().toISOString();
   if (action === "start") {
     order.startedAt = now;
@@ -694,7 +713,7 @@ function setChecklistStatus(orderId, index, status) {
 async function saveWorkAttachment(input) {
   const order = data.orders.find(item => item.id === input.dataset.orderId);
   const file = input.files[0];
-  if (!order || !file) return;
+  if (!order || !file || !canEditOrder(order)) return;
   order.attachment = await readAttachment(file);
   order.updates.push(`Attachment added: ${file.name}.`);
   saveData();
@@ -974,17 +993,22 @@ function formatBytes(value) {
 
 function openProfileDialog() {
   document.querySelector("#userEmailInput").value = data.settings.userEmail || "";
+  document.querySelector("#roleInfo").textContent = profileRoleText(data.settings.userEmail);
   els.profileDialog.showModal();
 }
 
 function saveProfile(event) {
   event.preventDefault();
-  data.settings.userEmail = document.querySelector("#userEmailInput").value.trim();
+  data.settings.userEmail = normalizeEmail(document.querySelector("#userEmailInput").value);
+  data.settings.role = getRoleForEmail(data.settings.userEmail);
   saveData();
   els.profileDialog.close();
+  if (!canUseView(activeView)) setView("orders");
+  render();
 }
 
 function exportData() {
+  if (!canManageData()) return;
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -995,6 +1019,7 @@ function exportData() {
 }
 
 function importData(event) {
+  if (!canManageData()) return;
   const file = event.target.files[0];
   if (!file) return;
   const reader = new FileReader();
@@ -1004,6 +1029,61 @@ function importData(event) {
     render();
   };
   reader.readAsText(file);
+}
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function getRoleForEmail(email) {
+  return adminEmails.includes(normalizeEmail(email)) ? "admin" : "user";
+}
+
+function canManageData() {
+  return data.settings.role === "admin";
+}
+
+function canUseView(view) {
+  return canManageData() || !["team", "assets", "reports", "live", "routines"].includes(view);
+}
+
+function canEditOrder(order) {
+  if (canManageData()) return true;
+  const currentEmail = normalizeEmail(data.settings.userEmail);
+  return Boolean(currentEmail && normalizeEmail(order.assigneeEmail) === currentEmail);
+}
+
+function visibleOrders() {
+  if (canManageData()) return data.orders;
+  const currentEmail = normalizeEmail(data.settings.userEmail);
+  if (!currentEmail) return [];
+  return data.orders.filter(order => normalizeEmail(order.assigneeEmail) === currentEmail);
+}
+
+function renderAccessControls() {
+  const admin = canManageData();
+  document.querySelectorAll("[data-admin-only]").forEach(el => {
+    el.classList.toggle("hidden", !admin);
+  });
+  document.querySelectorAll(".file-label").forEach(label => {
+    label.classList.toggle("hidden", !admin && label.querySelector("[data-admin-only]"));
+  });
+  els.profileBtn.textContent = data.settings.userEmail
+    ? `${data.settings.role === "admin" ? "Admin" : "User"}: ${data.settings.userEmail}`
+    : "User Email";
+  els.roleStatus.textContent = data.settings.userEmail
+    ? `${data.settings.role === "admin" ? "Admin" : "User"} mode`
+    : "Not signed in";
+  els.roleStatus.classList.toggle("admin", data.settings.role === "admin");
+  els.roleStatus.classList.toggle("user", data.settings.role === "user" && Boolean(data.settings.userEmail));
+}
+
+function profileRoleText(email) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return "Enter your registered email. Admin access is reserved for lhsgmaintenance@gmail.com.";
+  return getRoleForEmail(normalized) === "admin"
+    ? "Role: Admin. This email can create, assign, edit, and manage all records."
+    : "Role: User. This email can view and update only work orders assigned to it.";
 }
 
 els.navButtons.forEach(btn => btn.addEventListener("click", () => setView(btn.dataset.view)));
@@ -1065,6 +1145,7 @@ document.body.addEventListener("click", event => {
 
   const routineCardEl = event.target.closest(".routine-card");
   if (routineCardEl) {
+    if (!canManageData()) return;
     const routine = data.routines.find(item => item.id === routineCardEl.dataset.routineId);
     if (routine) openRoutineDialog(routine);
     return;
@@ -1085,7 +1166,7 @@ document.body.addEventListener("click", event => {
   const card = event.target.closest(".order-card");
   if (!card) return;
   const order = data.orders.find(item => item.id === card.dataset.orderId);
-  if (order) openOrderDialog(order);
+  if (order && canManageData()) openOrderDialog(order);
 });
 
 document.body.addEventListener("change", event => {

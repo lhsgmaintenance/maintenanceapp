@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/lh-icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/lh-icon.svg">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=20260515a">
 </head>
 <body>
   <aside class="sidebar">
@@ -27,16 +27,16 @@
       <button class="nav-btn" data-view="orders">Work Orders</button>
       <button class="nav-btn" data-view="routines">Routine Tasks</button>
       <button class="nav-btn" data-view="notifications">Notifications</button>
-      <button class="nav-btn" data-view="team">Team</button>
-      <button class="nav-btn" data-view="assets">Assets</button>
-      <button class="nav-btn" data-view="reports">Reports</button>
-      <button class="nav-btn" data-view="live">Live Version</button>
+      <button class="nav-btn" data-view="team" data-admin-only>Team</button>
+      <button class="nav-btn" data-view="assets" data-admin-only>Assets</button>
+      <button class="nav-btn" data-view="reports" data-admin-only>Reports</button>
+      <button class="nav-btn" data-view="live" data-admin-only>Live Version</button>
     </nav>
     <div class="sidebar-actions">
-      <button id="exportBtn" class="secondary">Export Data</button>
+      <button id="exportBtn" class="secondary" data-admin-only>Export Data</button>
       <label class="secondary file-label">
         Import Data
-        <input id="importFile" type="file" accept="application/json">
+        <input id="importFile" type="file" accept="application/json" data-admin-only>
       </label>
     </div>
   </aside>
@@ -49,9 +49,10 @@
       </div>
       <div class="top-actions">
         <button id="installAppBtn" class="secondary hidden">Install App</button>
+        <span id="roleStatus" class="access-pill">Not signed in</span>
         <button id="profileBtn" class="secondary">User Email</button>
         <button id="enableNotifyBtn" class="secondary">Enable Browser Alerts</button>
-        <button id="newOrderBtn" class="primary">New Work Order</button>
+        <button id="newOrderBtn" class="primary" data-admin-only>New Work Order</button>
       </div>
     </header>
 
@@ -114,7 +115,7 @@
     <section id="routinesView" class="view">
       <div class="section-head">
         <h3>Routine Maintenance</h3>
-        <button id="newRoutineBtn" class="secondary">New Routine</button>
+        <button id="newRoutineBtn" class="secondary" data-admin-only>New Routine</button>
       </div>
       <div id="routinesList" class="order-list"></div>
     </section>
@@ -134,7 +135,7 @@
     <section id="assetsView" class="view">
       <div class="section-head">
         <h3>Equipment Register</h3>
-        <button id="addAssetBtn" class="secondary">Add Asset</button>
+        <button id="addAssetBtn" class="secondary" data-admin-only>Add Asset</button>
       </div>
       <div id="assetsTable" class="table"></div>
     </section>
@@ -154,7 +155,7 @@
           <div id="priorityReport" class="bars"></div>
         </article>
       </div>
-      <button id="printBtn" class="secondary">Print Report</button>
+      <button id="printBtn" class="secondary" data-admin-only>Print Report</button>
     </section>
 
     <section id="liveView" class="view">
@@ -243,7 +244,7 @@
         <button type="button" class="icon-btn" id="closeProfileBtn" aria-label="Close">x</button>
       </div>
       <label class="full">Your Email Address<input id="userEmailInput" type="email" placeholder="staff@company.com"></label>
-      <p class="hint">Stored on this browser for now. Live version will use Google sign-in or email registration.</p>
+      <p id="roleInfo" class="hint">Stored on this browser for now. Live version will verify this email on the backend.</p>
       <div class="dialog-actions">
         <span></span>
         <span></span>
@@ -322,6 +323,6 @@
     </form>
   </dialog>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=20260515a"></script>
 </body>
 </html>

@@ -278,6 +278,36 @@ button:disabled {
   display: none !important;
 }
 
+.access-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.access-pill.admin {
+  border-color: rgba(15, 111, 115, 0.35);
+  background: rgba(15, 111, 115, 0.1);
+  color: var(--accent-dark);
+}
+
+.access-pill.user {
+  border-color: rgba(21, 111, 159, 0.3);
+  background: rgba(21, 111, 159, 0.1);
+  color: var(--medium);
+}
+
+.readonly-card {
+  cursor: default;
+}
+
 .card-foot {
   display: flex;
   justify-content: space-between;
