@@ -1,5 +1,5 @@
 {
-  "version": "1.1.0",
-  "build": "20260515j",
-  "notes": "Added app version display and update detection."
+  "version": "1.2.0",
+  "build": "20260515k",
+  "notes": "Connected the PWA to the Google Apps Script shared database."
 }

@@ -1,7 +1,8 @@
 const storeKey = "lhMaintenanceData";
 const legacyStoreKey = "maintenanceDeskData";
-const appVersion = "1.1.0";
-const appBuild = "20260515j";
+const appVersion = "1.2.0";
+const appBuild = "20260515k";
+const defaultApiUrl = "https://script.google.com/macros/s/AKfycbzfsye5T03XaH5YVY27i6Hk7T9frOHYtJ4XRPezG5xLhfQonBdWvjrLaMK0we_5mj0/exec";
 const pushConfig = {
   publicVapidKey: "",
   subscribeEndpoint: ""
@@ -10,7 +11,7 @@ const defaultWorkspace = {
   name: "LHSG Maintenance",
   databaseOwnerEmail: "lhsgmaintenance@gmail.com",
   adminEmails: ["lhsgmaintenance@gmail.com"],
-  apiUrl: "",
+  apiUrl: defaultApiUrl,
   sheetId: "",
   driveFolderId: "",
   firebaseProjectId: "",
@@ -232,6 +233,80 @@ function normalizeData(loaded) {
 
 function saveData() {
   localStorage.setItem(storeKey, JSON.stringify(data));
+}
+
+function backendUrl() {
+  return String(data.settings.workspace.apiUrl || "").trim();
+}
+
+async function loadRemoteData() {
+  const url = backendUrl();
+  if (!url || !data.settings.userEmail) return false;
+  const response = await fetch(`${url}?action=load&email=${encodeURIComponent(data.settings.userEmail)}&t=${Date.now()}`);
+  const payload = await response.json();
+  if (!payload.ok) throw new Error(payload.error || "Backend load failed.");
+  mergeRemoteData(payload.data || {});
+  saveData();
+  return true;
+}
+
+async function postRemote(action, body = {}) {
+  const url = backendUrl();
+  if (!url || !data.settings.userEmail) return null;
+  const response = await fetch(url, {
+    method: "POST",
+    body: JSON.stringify({
+      action,
+      actorEmail: data.settings.userEmail,
+      ...body
+    })
+  });
+  const payload = await response.json();
+  if (!payload.ok) throw new Error(payload.error || "Backend save failed.");
+  if (payload.data) {
+    mergeRemoteData(payload.data);
+    saveData();
+  }
+  return payload;
+}
+
+function mergeRemoteData(remote) {
+  const localSettings = data.settings || {};
+  const localWorkspace = localSettings.workspace || {};
+  data.orders = remote.orders || [];
+  data.assets = remote.assets || [];
+  data.routines = remote.routines || [];
+  data.notifications = remote.notifications || [];
+  data.settings = {
+    ...localSettings,
+    ...(remote.settings || {})
+  };
+  data.settings.workspace = normalizeWorkspace({
+    ...localWorkspace,
+    ...((remote.settings && remote.settings.workspace) || {}),
+    apiUrl: localWorkspace.apiUrl || defaultApiUrl
+  });
+  data.settings.userEmail = normalizeEmail(data.settings.userEmail || localSettings.userEmail);
+  data.settings.username = data.settings.username || localSettings.username || "";
+  data.settings.users = normalizeUsers(data.settings.users || localSettings.users || []);
+  data.settings.role = getRoleForEmail(data.settings.userEmail, data.settings.workspace);
+}
+
+async function syncOrder(order) {
+  try {
+    await postRemote("upsertOrder", { order });
+  } catch (err) {
+    alert(`Could not sync task to Google database: ${err.message}`);
+  }
+}
+
+async function syncAllAdmin() {
+  if (!canManageData()) return;
+  try {
+    await postRemote("saveAll", { data });
+  } catch (err) {
+    alert(`Could not sync admin changes to Google database: ${err.message}`);
+  }
 }
 
 function render() {
@@ -649,20 +724,22 @@ async function saveOrder(event) {
     createAssignmentNotification(order);
   }
   saveData();
+  await syncOrder(order);
   closeDialog(els.orderDialog);
   render();
 }
 
-function deleteCurrentOrder() {
+async function deleteCurrentOrder() {
   if (!canManageData()) return;
   const id = document.querySelector("#orderId").value;
   data.orders = data.orders.filter(order => order.id !== id);
   saveData();
+  await syncAllAdmin();
   closeDialog(els.orderDialog);
   render();
 }
 
-function saveAsset(event) {
+async function saveAsset(event) {
   event.preventDefault();
   if (!canManageData()) return;
   data.assets.push({
@@ -672,6 +749,7 @@ function saveAsset(event) {
     lastService: document.querySelector("#assetServiceInput").value
   });
   saveData();
+  await syncAllAdmin();
   closeDialog(els.assetDialog);
   els.assetForm.reset();
   render();
@@ -696,7 +774,7 @@ function openRoutineDialog(routine = null) {
   openDialog(els.routineDialog);
 }
 
-function saveRoutine(event) {
+async function saveRoutine(event) {
   event.preventDefault();
   if (!canManageData()) return;
   const id = document.querySelector("#routineId").value || nextRoutineId();
@@ -721,20 +799,22 @@ function saveRoutine(event) {
     data.routines.push(routine);
   }
   saveData();
+  await syncAllAdmin();
   closeDialog(els.routineDialog);
   render();
 }
 
-function deleteCurrentRoutine() {
+async function deleteCurrentRoutine() {
   if (!canManageData()) return;
   const id = document.querySelector("#routineId").value;
   data.routines = data.routines.filter(routine => routine.id !== id);
   saveData();
+  await syncAllAdmin();
   closeDialog(els.routineDialog);
   render();
 }
 
-function generateOrderFromRoutine(id) {
+async function generateOrderFromRoutine(id) {
   if (!canManageData()) return;
   const routine = data.routines.find(item => item.id === id);
   if (!routine) return;
@@ -763,11 +843,12 @@ function generateOrderFromRoutine(id) {
   routine.nextDue = nextRoutineDate(routine.nextDue, routine.frequencyDays);
   createAssignmentNotification(order);
   saveData();
+  await syncAllAdmin();
   setView("orders");
   render();
 }
 
-function handleOrderAction(action, id) {
+async function handleOrderAction(action, id) {
   const order = data.orders.find(item => item.id === id);
   if (!order) return;
   if (action !== "pdf" && !canEditOrder(order)) return;
@@ -802,6 +883,7 @@ function handleOrderAction(action, id) {
       order.updates.push(`Live version email target: ${order.adminEmail}.`);
     }
     saveData();
+    await syncOrder(order);
     render();
     openCompletionReport(order);
     return;
@@ -811,6 +893,7 @@ function handleOrderAction(action, id) {
     return;
   }
   saveData();
+  await syncOrder(order);
   render();
 }
 
@@ -828,6 +911,7 @@ async function saveWorkAttachment(input) {
   order.attachment = await readAttachment(file);
   order.updates.push(`Attachment added: ${file.name}.`);
   saveData();
+  await syncOrder(order);
   render();
 }
 
@@ -937,6 +1021,12 @@ async function initPwa() {
   });
 
   checkForAppUpdate();
+  try {
+    await loadRemoteData();
+    render();
+  } catch {
+    // Local storage remains available when the live backend cannot be reached.
+  }
 }
 
 async function checkForAppUpdate() {
@@ -1002,14 +1092,7 @@ async function savePushSubscription() {
   data.settings.pushSubscription = subscription.toJSON();
   saveData();
 
-  await fetch(pushConfig.subscribeEndpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      email: data.settings.userEmail,
-      subscription: data.settings.pushSubscription
-    })
-  });
+  await postRemote("savePushToken", { subscription: data.settings.pushSubscription });
 }
 
 function urlBase64ToUint8Array(value) {
@@ -1200,7 +1283,7 @@ function openProfileDialog() {
   openDialog(els.profileDialog);
 }
 
-function saveProfile(event) {
+async function saveProfile(event) {
   event.preventDefault();
   const email = normalizeEmail(document.querySelector("#userEmailInput").value);
   const username = document.querySelector("#usernameInput").value.trim();
@@ -1218,6 +1301,17 @@ function saveProfile(event) {
   }
   data.settings.role = getRoleForEmail(data.settings.userEmail);
   saveData();
+  try {
+    await postRemote("saveProfile", {
+      user: {
+        email: data.settings.userEmail,
+        username: data.settings.username
+      }
+    });
+    await loadRemoteData();
+  } catch (err) {
+    alert(`Could not connect to Google database: ${err.message}`);
+  }
   closeDialog(els.profileDialog);
   if (!canUseView(activeView)) setView("orders");
   render();
@@ -1234,7 +1328,7 @@ function exportData() {
   URL.revokeObjectURL(url);
 }
 
-function importData(event) {
+async function importData(event) {
   if (!canManageData()) return;
   const file = event.target.files[0];
   if (!file) return;
@@ -1242,6 +1336,7 @@ function importData(event) {
   reader.onload = () => {
     data = normalizeData(JSON.parse(reader.result));
     saveData();
+    syncAllAdmin();
     render();
   };
   reader.readAsText(file);
@@ -1394,7 +1489,7 @@ function parseEmailList(value) {
 
 function applyWorkspacePushConfig() {
   pushConfig.publicVapidKey = data.settings.workspace.vapidPublicKey;
-  pushConfig.subscribeEndpoint = data.settings.workspace.apiUrl;
+  pushConfig.subscribeEndpoint = data.settings.workspace.apiUrl || defaultApiUrl;
 }
 
 function renderWorkspaceForm() {
