@@ -17,7 +17,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/lh-icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/lh-icon.svg">
-  <link rel="stylesheet" href="styles.css?v=20260515g">
+  <link rel="stylesheet" href="styles.css?v=20260515h">
 </head>
 <body>
   <div id="startupError" class="startup-error"></div>
@@ -34,6 +34,7 @@
       <button class="nav-btn" data-view="orders">Work Orders</button>
       <button class="nav-btn" data-view="routines">Routine Tasks</button>
       <button class="nav-btn" data-view="notifications">Notifications</button>
+      <button class="nav-btn" data-view="calendar" data-admin-only>Calendar</button>
       <button class="nav-btn" data-view="team" data-admin-only>Team</button>
       <button class="nav-btn" data-view="assets" data-admin-only>Assets</button>
       <button class="nav-btn" data-view="reports" data-admin-only>Reports</button>
@@ -135,6 +136,23 @@
       <div id="notificationsList" class="order-list"></div>
     </section>
 
+    <section id="calendarView" class="view">
+      <div class="calendar-grid">
+        <section>
+          <div class="section-head">
+            <h3 id="calendarCurrentTitle">Current Month</h3>
+          </div>
+          <div id="calendarCurrent" class="calendar-month"></div>
+        </section>
+        <section>
+          <div class="section-head">
+            <h3 id="calendarNextTitle">Next Month</h3>
+          </div>
+          <div id="calendarNext" class="calendar-month"></div>
+        </section>
+      </div>
+    </section>
+
     <section id="teamView" class="view">
       <div id="teamGrid" class="team-grid"></div>
     </section>
@@ -220,7 +238,8 @@
         <label>Title<input id="titleInput" required></label>
         <label>Asset<input id="assetInput" required></label>
         <label>Area<input id="areaInput" required></label>
-        <label>Assigned To<input id="assigneeInput" required></label>
+        <label>Assigned To<input id="assigneeInput" list="userList" required></label>
+        <datalist id="userList"></datalist>
         <label>Assignee Email<input id="assigneeEmailInput" type="email" placeholder="optional"></label>
         <label>Admin / Assigner Email<input id="adminEmailInput" type="email" placeholder="optional"></label>
         <label>Task Type
@@ -269,6 +288,7 @@
         <button type="button" class="icon-btn" id="closeProfileBtn" aria-label="Close">x</button>
       </div>
       <label class="full">Your Email Address<input id="userEmailInput" type="email" placeholder="staff@company.com"></label>
+      <label class="full">Username<input id="usernameInput" placeholder="e.g. woeichia"></label>
       <label class="full checkbox-line">
         <input id="newWorkspaceAdminInput" type="checkbox">
         Create a new branch workspace and make this email the admin
@@ -352,6 +372,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=20260515g"></script>
+  <script src="app.js?v=20260515h"></script>
 </body>
 </html>

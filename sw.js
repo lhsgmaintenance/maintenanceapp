@@ -1,4 +1,4 @@
-const cacheName = "lh-maintenance-v9";
+const cacheName = "lh-maintenance-v10";
 const appShell = [
   "./",
   "index.html",

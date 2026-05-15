@@ -119,6 +119,8 @@ const seedData = {
   ],
   settings: {
     userEmail: "",
+    username: "",
+    users: [],
     role: "user",
     workspace: cloneData(defaultWorkspace),
     pushSubscription: null
@@ -192,6 +194,8 @@ function normalizeData(loaded) {
   loaded.notifications = loaded.notifications || [];
   loaded.settings = loaded.settings || {};
   loaded.settings.userEmail = loaded.settings.userEmail || "";
+  loaded.settings.username = loaded.settings.username || "";
+  loaded.settings.users = normalizeUsers(loaded.settings.users || []);
   loaded.settings.workspace = normalizeWorkspace(loaded.settings.workspace);
   loaded.settings.role = getRoleForEmail(loaded.settings.userEmail, loaded.settings.workspace);
   loaded.settings.pushSubscription = loaded.settings.pushSubscription || null;
@@ -200,6 +204,7 @@ function normalizeData(loaded) {
     order.startedAt = order.startedAt || "";
     order.endedAt = order.endedAt || "";
     order.completedAt = order.completedAt || "";
+    order.draftUpdate = order.draftUpdate || "";
     order.checklist = order.checklist || [];
     order.checklist = order.checklist.map(item => ({
       text: typeof item === "string" ? item : item.text,
@@ -233,6 +238,7 @@ function render() {
   renderOrders();
   renderRoutines();
   renderNotifications();
+  renderCalendar();
   renderTeam();
   renderAssets();
   renderReports();
@@ -251,6 +257,7 @@ const viewLabels = {
   orders: "Work Orders",
   routines: "Routine Tasks",
   notifications: "Notifications",
+  calendar: "Calendar",
   team: "Team",
   assets: "Assets",
   reports: "Reports",
@@ -307,6 +314,54 @@ function renderRoutines() {
       .map(routineCard)
       .join("")
     : empty("No routine maintenance tasks have been created.");
+}
+
+function renderCalendar() {
+  const current = new Date();
+  const next = new Date(current.getFullYear(), current.getMonth() + 1, 1);
+  renderCalendarMonth("calendarCurrent", "calendarCurrentTitle", current);
+  renderCalendarMonth("calendarNext", "calendarNextTitle", next);
+}
+
+function renderCalendarMonth(containerId, titleId, date) {
+  const container = document.querySelector(`#${containerId}`);
+  if (!container) return;
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  document.querySelector(`#${titleId}`).textContent = date.toLocaleString([], { month: "long", year: "numeric" });
+  const first = new Date(year, month, 1);
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const leading = first.getDay();
+  const tasksByDate = calendarItemsForMonth(year, month);
+  const cells = [];
+  ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].forEach(day => {
+    cells.push(`<div class="calendar-head-cell">${day}</div>`);
+  });
+  for (let i = 0; i < leading; i += 1) cells.push(`<div class="calendar-day muted-day"></div>`);
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const key = `${year}-${pad2(month + 1)}-${pad2(day)}`;
+    const items = tasksByDate[key] || [];
+    cells.push(`<div class="calendar-day">
+      <strong>${day}</strong>
+      ${items.map(item => `<button class="calendar-item ${escapeHtml(item.kind)}" data-order-id="${escapeHtml(item.orderId || "")}">${escapeHtml(item.label)}</button>`).join("")}
+    </div>`);
+  }
+  container.innerHTML = cells.join("");
+}
+
+function calendarItemsForMonth(year, month) {
+  const items = {};
+  data.orders.forEach(order => {
+    if (!isDateInMonth(order.due, year, month)) return;
+    items[order.due] = items[order.due] || [];
+    items[order.due].push({ kind: "work", label: `${order.id} ${order.title}`, orderId: order.id });
+  });
+  data.routines.forEach(routine => {
+    if (!isDateInMonth(routine.nextDue, year, month)) return;
+    items[routine.nextDue] = items[routine.nextDue] || [];
+    items[routine.nextDue].push({ kind: "routine", label: `Routine: ${routine.title}` });
+  });
+  return items;
 }
 
 function renderNotifications() {
@@ -457,7 +512,7 @@ function orderCard(order) {
     ${checklistHtml}
     <div class="meta">${escapeHtml(timing)}</div>
     <label class="completion-note">Latest Update Before Submit
-      <textarea class="completion-update" data-order-id="${escapeHtml(order.id)}" rows="2" placeholder="Write what happened, or type N/A">N/A</textarea>
+      <textarea class="completion-update" data-order-id="${escapeHtml(order.id)}" rows="2" placeholder="Write what happened, or type N/A">${escapeHtml(order.draftUpdate || "N/A")}</textarea>
     </label>
     <div class="work-actions">
       <label class="secondary attachment-control">
@@ -526,6 +581,7 @@ async function saveOrder(event) {
   const id = document.querySelector("#orderId").value || nextOrderId();
   const existing = data.orders.find(order => order.id === id);
   const previousAssignee = existing ? existing.assignee || "" : "";
+  applyAssigneeUserMatch();
   const update = document.querySelector("#updateInput").value.trim();
   const order = {
     id,
@@ -545,6 +601,7 @@ async function saveOrder(event) {
     startedAt: existing ? existing.startedAt || "" : "",
     endedAt: existing ? existing.endedAt || "" : "",
     completedAt: existing ? existing.completedAt || "" : "",
+    draftUpdate: existing ? existing.draftUpdate || "" : "",
     updates: existing ? existing.updates || [] : [],
     attachment: existing ? existing.attachment || null : null
   };
@@ -684,6 +741,7 @@ function handleOrderAction(action, id) {
   if (!order) return;
   if (action !== "pdf" && !canEditOrder(order)) return;
   const now = new Date().toISOString();
+  saveDraftUpdateFromPage(order);
   if (action === "start") {
     order.startedAt = now;
     order.status = "In Progress";
@@ -707,6 +765,7 @@ function handleOrderAction(action, id) {
     order.completedAt = now;
     order.status = "Completed";
     order.updates.push(note);
+    order.draftUpdate = "";
     order.updates.push(`Work completed and submitted at ${formatDateTime(now)}.`);
     if (order.adminEmail) {
       order.updates.push(`Live version email target: ${order.adminEmail}.`);
@@ -932,6 +991,17 @@ function addDays(dateText, days) {
   return date.toISOString().slice(0, 10);
 }
 
+function pad2(value) {
+  const text = String(value);
+  return text.length < 2 ? `0${text}` : text;
+}
+
+function isDateInMonth(dateText, year, month) {
+  if (!dateText) return false;
+  const parts = String(dateText).split("-");
+  return Number(parts[0]) === year && Number(parts[1]) === month + 1;
+}
+
 function parseChecklist(value) {
   return value
     .split(/\r?\n/)
@@ -1046,6 +1116,7 @@ function formatBytes(value) {
 
 function openProfileDialog() {
   document.querySelector("#userEmailInput").value = data.settings.userEmail || "";
+  document.querySelector("#usernameInput").value = data.settings.username || "";
   document.querySelector("#newWorkspaceAdminInput").checked = false;
   document.querySelector("#roleInfo").textContent = profileRoleText(data.settings.userEmail);
   openDialog(els.profileDialog);
@@ -1054,8 +1125,11 @@ function openProfileDialog() {
 function saveProfile(event) {
   event.preventDefault();
   const email = normalizeEmail(document.querySelector("#userEmailInput").value);
+  const username = document.querySelector("#usernameInput").value.trim();
   const createWorkspace = document.querySelector("#newWorkspaceAdminInput").checked;
   data.settings.userEmail = email;
+  data.settings.username = username;
+  upsertUser(username, email);
   if (email && createWorkspace) {
     data.settings.workspace = normalizeWorkspace({
       ...data.settings.workspace,
@@ -1110,7 +1184,7 @@ function canManageData() {
 }
 
 function canUseView(view) {
-  return canManageData() || !["team", "assets", "reports", "live", "routines"].includes(view);
+  return canManageData() || !["calendar", "team", "assets", "reports", "live", "routines"].includes(view);
 }
 
 function canEditOrder(order) {
@@ -1155,6 +1229,7 @@ function renderAccessControls() {
     : "Not signed in";
   els.roleStatus.classList.toggle("admin", data.settings.role === "admin");
   els.roleStatus.classList.toggle("user", data.settings.role === "user" && Boolean(data.settings.userEmail));
+  renderUserList();
 }
 
 function profileRoleText(email) {
@@ -1163,6 +1238,60 @@ function profileRoleText(email) {
   return getRoleForEmail(normalized) === "admin"
     ? "Role: Admin. This email can create, assign, edit, and manage all records."
     : "Role: User. This email can view and update only work orders assigned to it.";
+}
+
+function renderUserList() {
+  const list = document.querySelector("#userList");
+  if (!list) return;
+  list.innerHTML = data.settings.users
+    .map(user => `<option value="${escapeAttribute(user.username)}">${escapeHtml(user.email)}</option>`)
+    .join("");
+}
+
+function normalizeUsers(users) {
+  const byEmail = {};
+  users.forEach(user => {
+    const email = normalizeEmail(user.email);
+    const username = String(user.username || "").trim();
+    if (!email || !username) return;
+    byEmail[email] = { username, email };
+  });
+  return Object.values(byEmail).sort((a, b) => a.username.localeCompare(b.username));
+}
+
+function upsertUser(username, email) {
+  const normalizedEmail = normalizeEmail(email);
+  const normalizedUsername = String(username || "").trim();
+  if (!normalizedEmail || !normalizedUsername) return;
+  const existing = data.settings.users.find(user => normalizeEmail(user.email) === normalizedEmail);
+  if (existing) {
+    existing.username = normalizedUsername;
+    existing.email = normalizedEmail;
+  } else {
+    data.settings.users.push({ username: normalizedUsername, email: normalizedEmail });
+  }
+  data.settings.users = normalizeUsers(data.settings.users);
+}
+
+function findUserByUsername(username) {
+  const value = String(username || "").trim().toLowerCase();
+  return data.settings.users.find(user => user.username.toLowerCase() === value);
+}
+
+function applyAssigneeUserMatch() {
+  const nameField = document.querySelector("#assigneeInput");
+  const emailField = document.querySelector("#assigneeEmailInput");
+  if (!nameField || !emailField) return;
+  const user = findUserByUsername(nameField.value);
+  if (!user) return;
+  nameField.value = user.username;
+  emailField.value = user.email;
+}
+
+function saveDraftUpdateFromPage(order) {
+  const field = document.querySelector(`.completion-update[data-order-id="${escapeSelectorValue(order.id)}"]`);
+  if (!field) return;
+  order.draftUpdate = field.value.trim();
 }
 
 function normalizeWorkspace(workspace = {}) {
@@ -1250,6 +1379,8 @@ els.deleteOrderBtn.addEventListener("click", deleteCurrentOrder);
 els.searchInput.addEventListener("input", renderOrders);
 els.statusFilter.addEventListener("change", renderOrders);
 els.priorityFilter.addEventListener("change", renderOrders);
+document.querySelector("#assigneeInput").addEventListener("change", applyAssigneeUserMatch);
+document.querySelector("#assigneeInput").addEventListener("blur", applyAssigneeUserMatch);
 els.exportBtn.addEventListener("click", exportData);
 els.importFile.addEventListener("change", importData);
 els.printBtn.addEventListener("click", () => window.print());
@@ -1293,6 +1424,13 @@ document.body.addEventListener("click", event => {
   if (orderShortcut) {
     event.stopPropagation();
     openAssignedOrder(orderShortcut.dataset.orderId);
+    return;
+  }
+
+  const calendarItem = event.target.closest(".calendar-item");
+  if (calendarItem && calendarItem.dataset.orderId) {
+    event.stopPropagation();
+    openAssignedOrder(calendarItem.dataset.orderId);
     return;
   }
 
@@ -1341,6 +1479,15 @@ document.body.addEventListener("change", event => {
   if (!status) return;
   event.stopPropagation();
   setChecklistStatus(status.dataset.orderId, Number(status.dataset.index), status.value);
+});
+
+document.body.addEventListener("input", event => {
+  const updateField = event.target.closest(".completion-update");
+  if (!updateField) return;
+  const order = data.orders.find(item => item.id === updateField.dataset.orderId);
+  if (!order) return;
+  order.draftUpdate = updateField.value;
+  saveData();
 });
 
 setView(activeView);
