@@ -193,7 +193,7 @@ function normalizeData(loaded) {
   loaded.settings = loaded.settings || {};
   loaded.settings.userEmail = loaded.settings.userEmail || "";
   loaded.settings.workspace = normalizeWorkspace(loaded.settings.workspace);
-  loaded.settings.role = getRoleForEmail(loaded.settings.userEmail);
+  loaded.settings.role = getRoleForEmail(loaded.settings.userEmail, loaded.settings.workspace);
   loaded.settings.pushSubscription = loaded.settings.pushSubscription || null;
   loaded.orders.forEach(order => {
     order.taskType = order.taskType || (String(order.id || "").indexOf("WO-1003") === 0 ? "Routine Maintenance" : "Breakdown");
@@ -1098,8 +1098,8 @@ function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
-function getRoleForEmail(email) {
-  const workspace = data && data.settings ? data.settings.workspace : null;
+function getRoleForEmail(email, workspace = null) {
+  workspace = workspace || (data && data.settings ? data.settings.workspace : null);
   const admins = workspace && workspace.adminEmails ? workspace.adminEmails : [];
   return admins.indexOf(normalizeEmail(email)) >= 0 ? "admin" : "user";
 }
