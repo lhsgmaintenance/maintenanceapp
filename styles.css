@@ -283,6 +283,24 @@ button:disabled {
   border-left: 4px solid transparent;
 }
 
+.order-card.completed-card {
+  border-color: #a9b4ba;
+  background: #eef1f3;
+  color: #53616a;
+}
+
+.order-card.completed-card h4,
+.order-card.completed-card .completion-note textarea {
+  background: #f5f7f8;
+  color: #53616a;
+}
+
+.order-card.completed-card .attachment-link,
+.order-card.completed-card .meta,
+.order-card.completed-card .card-foot {
+  color: #6b777f;
+}
+
 .order-card:hover {
   border-color: #b8c8cf;
   box-shadow: var(--shadow);
@@ -464,6 +482,13 @@ button:disabled {
   min-height: 34px;
 }
 
+.card-badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .attachment-control {
   display: inline-flex;
   align-items: center;
@@ -535,6 +560,21 @@ button:disabled {
   color: white;
   font-size: 12px;
   font-weight: 700;
+  white-space: nowrap;
+}
+
+.complete-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 3px 8px;
+  border: 1px solid #a9b4ba;
+  border-radius: 999px;
+  background: #dfe4e7;
+  color: #36444d;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 

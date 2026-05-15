@@ -1,7 +1,7 @@
 const storeKey = "lhMaintenanceData";
 const legacyStoreKey = "maintenanceDeskData";
-const appVersion = "1.2.3";
-const appBuild = "20260515n";
+const appVersion = "1.2.4";
+const appBuild = "20260515o";
 const defaultApiUrl = "https://script.google.com/macros/s/AKfycbzfsye5T03XaH5YVY27i6Hk7T9frOHYtJ4XRPezG5xLhfQonBdWvjrLaMK0we_5mj0/exec";
 const pushConfig = {
   firebaseApiKey: "",
@@ -324,21 +324,33 @@ function mergeRemoteData(remote) {
   data.settings.role = getRoleForEmail(data.settings.userEmail, data.settings.workspace);
 }
 
-async function syncOrder(order) {
+async function syncOrder(order, options = {}) {
   try {
     await postRemote("upsertOrder", { order });
+    updateSyncStatus("ok", `Saved to Google ${formatTimeOnly(new Date())}.`);
   } catch (err) {
-    alert(`Could not sync task to Google database: ${err.message}`);
+    updateSyncStatus("error", `Google sync pending: ${err.message}`);
+    if (!options.silent) alert(`Could not sync task to Google database: ${err.message}`);
   }
 }
 
-async function syncAllAdmin() {
+async function syncAllAdmin(options = {}) {
   if (!canManageData()) return;
   try {
     await postRemote("saveAll", { data });
+    updateSyncStatus("ok", `Saved to Google ${formatTimeOnly(new Date())}.`);
   } catch (err) {
-    alert(`Could not sync admin changes to Google database: ${err.message}`);
+    updateSyncStatus("error", `Google sync pending: ${err.message}`);
+    if (!options.silent) alert(`Could not sync admin changes to Google database: ${err.message}`);
   }
+}
+
+function syncOrderInBackground(order) {
+  syncOrder(cloneData(order), { silent: true });
+}
+
+function syncAllAdminInBackground() {
+  syncAllAdmin({ silent: true });
 }
 
 async function refreshRemoteData({ announceErrors = false } = {}) {
@@ -770,6 +782,7 @@ function renderBarReport(id, counts) {
 function orderCard(order) {
   const editable = canEditOrder(order);
   const manageable = canManageData();
+  const completed = order.status === "Completed";
   const overdue = isOverdue(order) ? "Overdue" : order.due;
   const latest = order.updates.length ? order.updates[order.updates.length - 1] : order.details;
   const emailMeta = [order.assigneeEmail, order.adminEmail].filter(Boolean).join(" | ");
@@ -780,26 +793,30 @@ function orderCard(order) {
   const timing = order.startedAt
     ? `Started ${formatDateTime(order.startedAt)}${order.endedAt ? ` | Ended ${formatDateTime(order.endedAt)}` : ""}`
     : "Not started";
-  const canStart = editable && order.status !== "Completed" && !order.startedAt;
-  const canEnd = editable && order.status !== "Completed" && order.startedAt && !order.endedAt;
-  const canSubmit = editable && order.status !== "Completed" && order.startedAt && order.endedAt;
+  const canStart = editable && !completed && !order.startedAt;
+  const canEnd = editable && !completed && order.startedAt && !order.endedAt;
+  const canSubmit = editable && !completed && order.startedAt && order.endedAt;
   const checklistHtml = order.checklist.length
     ? `<div class="checklist">
         ${order.checklist.map((item, index) => `<div class="check-row">
           <span>${escapeHtml(item.text)}</span>
-          <label><input type="radio" class="checklist-status" name="${escapeHtml(order.id)}-${index}" data-order-id="${escapeHtml(order.id)}" data-index="${index}" value="ok" ${item.status === "ok" ? "checked" : ""} ${order.status === "Completed" ? "disabled" : ""}> Ok</label>
-          <label><input type="radio" class="checklist-status" name="${escapeHtml(order.id)}-${index}" data-order-id="${escapeHtml(order.id)}" data-index="${index}" value="not_ok" ${item.status === "not_ok" ? "checked" : ""} ${order.status === "Completed" ? "disabled" : ""}> Not ok</label>
+          <label><input type="radio" class="checklist-status" name="${escapeHtml(order.id)}-${index}" data-order-id="${escapeHtml(order.id)}" data-index="${index}" value="ok" ${item.status === "ok" ? "checked" : ""} ${completed ? "disabled" : ""}> Ok</label>
+          <label><input type="radio" class="checklist-status" name="${escapeHtml(order.id)}-${index}" data-order-id="${escapeHtml(order.id)}" data-index="${index}" value="not_ok" ${item.status === "not_ok" ? "checked" : ""} ${completed ? "disabled" : ""}> Not ok</label>
         </div>`).join("")}
       </div>`
     : "";
-  return `<article class="order-card ${manageable ? "" : "readonly-card"}" data-order-id="${escapeHtml(order.id)}">
+  const statusText = completed ? "Complete" : order.status;
+  return `<article class="order-card ${manageable ? "" : "readonly-card"} ${completed ? "completed-card" : ""}" data-order-id="${escapeHtml(order.id)}">
     <header>
       <div>
         <h4>${escapeHtml(order.id)} - ${escapeHtml(order.title)}</h4>
         <div class="meta">${escapeHtml(order.asset)} | ${escapeHtml(order.area)} | ${escapeHtml(order.assignee)} | ${escapeHtml(order.taskType || "Breakdown")}</div>
         ${emailMeta ? `<div class="meta">${escapeHtml(emailMeta)}</div>` : ""}
       </div>
-      <span class="pill ${escapeHtml(order.priority)}">${escapeHtml(order.priority)}</span>
+      <div class="card-badges">
+        ${completed ? `<span class="complete-pill">Complete</span>` : ""}
+        <span class="pill ${escapeHtml(order.priority)}">${escapeHtml(order.priority)}</span>
+      </div>
     </header>
     <p>${escapeHtml(latest)}</p>
     ${attachmentHtml}
@@ -811,15 +828,15 @@ function orderCard(order) {
     <div class="work-actions">
       <label class="secondary attachment-control">
         ${escapeHtml(attachmentLabel)}
-        <input class="work-attachment-input" data-order-id="${escapeHtml(order.id)}" type="file" ${editable && order.status !== "Completed" ? "" : "disabled"}>
+        <input class="work-attachment-input" data-order-id="${escapeHtml(order.id)}" type="file" ${editable && !completed ? "" : "disabled"}>
       </label>
       <button class="secondary order-action" data-action="start" data-order-id="${escapeHtml(order.id)}" ${canStart ? "" : "disabled"}>Start</button>
       <button class="secondary order-action" data-action="end" data-order-id="${escapeHtml(order.id)}" ${canEnd ? "" : "disabled"}>End</button>
       <button class="primary order-action" data-action="submit" data-order-id="${escapeHtml(order.id)}" ${canSubmit ? "" : "disabled"}>Submit Done</button>
-      <button class="secondary order-action" data-action="pdf" data-order-id="${escapeHtml(order.id)}" ${order.status === "Completed" ? "" : "disabled"}>PDF Report</button>
+      <button class="secondary order-action" data-action="pdf" data-order-id="${escapeHtml(order.id)}" ${completed ? "" : "disabled"}>PDF Report</button>
     </div>
     <div class="card-foot">
-      <span>${escapeHtml(order.status)}</span>
+      <span>${escapeHtml(statusText)}</span>
       <span>${escapeHtml(overdue)}</span>
     </div>
   </article>`;
@@ -912,9 +929,10 @@ async function saveOrder(event) {
     createAssignmentNotification(order);
   }
   saveData();
-  await syncOrder(order);
   closeDialog(els.orderDialog);
   render();
+  updateSyncStatus("ok", "Saved locally. Syncing to Google...");
+  syncOrderInBackground(order);
 }
 
 async function deleteCurrentOrder() {
@@ -922,9 +940,10 @@ async function deleteCurrentOrder() {
   const id = document.querySelector("#orderId").value;
   data.orders = data.orders.filter(order => order.id !== id);
   saveData();
-  await syncAllAdmin();
   closeDialog(els.orderDialog);
   render();
+  updateSyncStatus("ok", "Deleted locally. Syncing to Google...");
+  syncAllAdminInBackground();
 }
 
 async function saveAsset(event) {
@@ -937,10 +956,11 @@ async function saveAsset(event) {
     lastService: document.querySelector("#assetServiceInput").value
   });
   saveData();
-  await syncAllAdmin();
   closeDialog(els.assetDialog);
   els.assetForm.reset();
   render();
+  updateSyncStatus("ok", "Saved locally. Syncing to Google...");
+  syncAllAdminInBackground();
 }
 
 function openRoutineDialog(routine = null) {
@@ -990,9 +1010,10 @@ async function saveRoutine(event) {
     data.routines.push(routine);
   }
   saveData();
-  await syncAllAdmin();
   closeDialog(els.routineDialog);
   render();
+  updateSyncStatus("ok", "Saved locally. Syncing to Google...");
+  syncAllAdminInBackground();
 }
 
 async function deleteCurrentRoutine() {
@@ -1000,9 +1021,10 @@ async function deleteCurrentRoutine() {
   const id = document.querySelector("#routineId").value;
   data.routines = data.routines.filter(routine => routine.id !== id);
   saveData();
-  await syncAllAdmin();
   closeDialog(els.routineDialog);
   render();
+  updateSyncStatus("ok", "Deleted locally. Syncing to Google...");
+  syncAllAdminInBackground();
 }
 
 async function generateOrderFromRoutine(id) {
@@ -1034,9 +1056,10 @@ async function generateOrderFromRoutine(id) {
   routine.nextDue = nextRoutineDate(routine.nextDue, routine.frequencyDays);
   createAssignmentNotification(order);
   saveData();
-  await syncAllAdmin();
   setView("orders");
   render();
+  updateSyncStatus("ok", "Created locally. Syncing to Google...");
+  syncAllAdminInBackground();
 }
 
 async function handleOrderAction(action, id) {
@@ -1077,8 +1100,9 @@ async function handleOrderAction(action, id) {
     }
     createStatusNotification(order, `${order.id} was completed by ${order.assignee}.`);
     saveData();
-    await syncOrder(order);
     render();
+    updateSyncStatus("ok", "Completed locally. Syncing to Google...");
+    syncOrderInBackground(order);
     openCompletionReport(order);
     return;
   }
@@ -1087,8 +1111,9 @@ async function handleOrderAction(action, id) {
     return;
   }
   saveData();
-  await syncOrder(order);
   render();
+  updateSyncStatus("ok", "Updated locally. Syncing to Google...");
+  syncOrderInBackground(order);
 }
 
 function setChecklistStatus(orderId, index, status) {
@@ -1105,8 +1130,9 @@ async function saveWorkAttachment(input) {
   order.attachment = await readAttachment(file);
   order.updates.push(`Attachment added: ${file.name}.`);
   saveData();
-  await syncOrder(order);
   render();
+  updateSyncStatus("ok", "Attachment saved locally. Syncing to Google...");
+  syncOrderInBackground(order);
 }
 
 function openCompletionReport(order) {
@@ -1650,21 +1676,25 @@ async function saveProfile(event) {
   }
   data.settings.role = getRoleForEmail(data.settings.userEmail);
   saveData();
-  try {
-    await postRemote("saveProfile", {
-      user: {
-        email: data.settings.userEmail,
-        username: data.settings.username
-      }
-    });
-    await loadRemoteData();
-  } catch (err) {
-    alert(`Could not connect to Google database: ${err.message}`);
-  }
   closeDialog(els.profileDialog);
   if (!canUseView(activeView)) setView("orders");
   render();
   startRemoteRefresh();
+  updateSyncStatus("ok", "Profile saved locally. Syncing to Google...");
+  postRemote("saveProfile", {
+      user: {
+        email: data.settings.userEmail,
+        username: data.settings.username
+      }
+    })
+    .then(() => loadRemoteData())
+    .then(() => {
+      render();
+      updateSyncStatus("ok", `Profile synced ${formatTimeOnly(new Date())}.`);
+    })
+    .catch(err => {
+      updateSyncStatus("error", `Profile saved locally. Google sync pending: ${err.message}`);
+    });
 }
 
 function exportData() {
