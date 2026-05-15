@@ -4,7 +4,16 @@ const pushConfig = {
   publicVapidKey: "",
   subscribeEndpoint: ""
 };
-const adminEmails = ["lhsgmaintenance@gmail.com"];
+const defaultWorkspace = {
+  name: "LHSG Maintenance",
+  databaseOwnerEmail: "lhsgmaintenance@gmail.com",
+  adminEmails: ["lhsgmaintenance@gmail.com"],
+  apiUrl: "",
+  sheetId: "",
+  driveFolderId: "",
+  firebaseProjectId: "",
+  vapidPublicKey: ""
+};
 
 const seedData = {
   orders: [
@@ -111,6 +120,7 @@ const seedData = {
   settings: {
     userEmail: "",
     role: "user",
+    workspace: structuredClone(defaultWorkspace),
     pushSubscription: null
   }
 };
@@ -154,7 +164,9 @@ const els = {
   deleteRoutineBtn: document.querySelector("#deleteRoutineBtn"),
   clearNotificationsBtn: document.querySelector("#clearNotificationsBtn"),
   installAppBtn: document.querySelector("#installAppBtn"),
-  roleStatus: document.querySelector("#roleStatus")
+  roleStatus: document.querySelector("#roleStatus"),
+  workspaceForm: document.querySelector("#workspaceForm"),
+  resetWorkspaceBtn: document.querySelector("#resetWorkspaceBtn")
 };
 
 function todayOffset(days) {
@@ -176,6 +188,7 @@ function normalizeData(loaded) {
   loaded.notifications ||= [];
   loaded.settings ||= {};
   loaded.settings.userEmail ||= "";
+  loaded.settings.workspace = normalizeWorkspace(loaded.settings.workspace);
   loaded.settings.role = getRoleForEmail(loaded.settings.userEmail);
   loaded.settings.pushSubscription ||= null;
   loaded.orders.forEach(order => {
@@ -208,7 +221,9 @@ function saveData() {
 
 function render() {
   data.settings.role = getRoleForEmail(data.settings.userEmail);
+  applyWorkspacePushConfig();
   renderAccessControls();
+  renderWorkspaceForm();
   renderDashboard();
   renderOrders();
   renderRoutines();
@@ -993,13 +1008,24 @@ function formatBytes(value) {
 
 function openProfileDialog() {
   document.querySelector("#userEmailInput").value = data.settings.userEmail || "";
+  document.querySelector("#newWorkspaceAdminInput").checked = false;
   document.querySelector("#roleInfo").textContent = profileRoleText(data.settings.userEmail);
   els.profileDialog.showModal();
 }
 
 function saveProfile(event) {
   event.preventDefault();
-  data.settings.userEmail = normalizeEmail(document.querySelector("#userEmailInput").value);
+  const email = normalizeEmail(document.querySelector("#userEmailInput").value);
+  const createWorkspace = document.querySelector("#newWorkspaceAdminInput").checked;
+  data.settings.userEmail = email;
+  if (email && createWorkspace) {
+    data.settings.workspace = normalizeWorkspace({
+      ...data.settings.workspace,
+      name: `${email.split("@")[0]} Maintenance`,
+      databaseOwnerEmail: email,
+      adminEmails: [email]
+    });
+  }
   data.settings.role = getRoleForEmail(data.settings.userEmail);
   saveData();
   els.profileDialog.close();
@@ -1036,7 +1062,7 @@ function normalizeEmail(value) {
 }
 
 function getRoleForEmail(email) {
-  return adminEmails.includes(normalizeEmail(email)) ? "admin" : "user";
+  return data?.settings?.workspace?.adminEmails?.includes(normalizeEmail(email)) ? "admin" : "user";
 }
 
 function canManageData() {
@@ -1080,10 +1106,75 @@ function renderAccessControls() {
 
 function profileRoleText(email) {
   const normalized = normalizeEmail(email);
-  if (!normalized) return "Enter your registered email. Admin access is reserved for lhsgmaintenance@gmail.com.";
+  if (!normalized) return `Enter your registered email. Admin access is reserved for: ${data.settings.workspace.adminEmails.join(", ")}.`;
   return getRoleForEmail(normalized) === "admin"
     ? "Role: Admin. This email can create, assign, edit, and manage all records."
     : "Role: User. This email can view and update only work orders assigned to it.";
+}
+
+function normalizeWorkspace(workspace = {}) {
+  const merged = { ...defaultWorkspace, ...workspace };
+  merged.name = String(merged.name || defaultWorkspace.name).trim();
+  merged.databaseOwnerEmail = normalizeEmail(merged.databaseOwnerEmail || defaultWorkspace.databaseOwnerEmail);
+  merged.adminEmails = parseEmailList(merged.adminEmails?.length ? merged.adminEmails : merged.databaseOwnerEmail)
+    .filter(Boolean);
+  if (!merged.adminEmails.length) merged.adminEmails = [...defaultWorkspace.adminEmails];
+  merged.apiUrl = String(merged.apiUrl || "").trim();
+  merged.sheetId = String(merged.sheetId || "").trim();
+  merged.driveFolderId = String(merged.driveFolderId || "").trim();
+  merged.firebaseProjectId = String(merged.firebaseProjectId || "").trim();
+  merged.vapidPublicKey = String(merged.vapidPublicKey || "").trim();
+  return merged;
+}
+
+function parseEmailList(value) {
+  const text = Array.isArray(value) ? value.join("\n") : String(value || "");
+  return [...new Set(text.split(/[\s,;]+/).map(normalizeEmail).filter(Boolean))];
+}
+
+function applyWorkspacePushConfig() {
+  pushConfig.publicVapidKey = data.settings.workspace.vapidPublicKey;
+  pushConfig.subscribeEndpoint = data.settings.workspace.apiUrl;
+}
+
+function renderWorkspaceForm() {
+  if (!els.workspaceForm) return;
+  const workspace = data.settings.workspace;
+  document.querySelector("#workspaceNameInput").value = workspace.name;
+  document.querySelector("#databaseOwnerInput").value = workspace.databaseOwnerEmail;
+  document.querySelector("#adminEmailsInput").value = workspace.adminEmails.join("\n");
+  document.querySelector("#apiUrlInput").value = workspace.apiUrl;
+  document.querySelector("#sheetIdInput").value = workspace.sheetId;
+  document.querySelector("#driveFolderIdInput").value = workspace.driveFolderId;
+  document.querySelector("#firebaseProjectIdInput").value = workspace.firebaseProjectId;
+  document.querySelector("#vapidKeyInput").value = workspace.vapidPublicKey;
+  document.querySelector("#workspaceStatus").textContent = `Active workspace: ${workspace.name}`;
+}
+
+function saveWorkspace(event) {
+  event.preventDefault();
+  if (!canManageData()) return;
+  data.settings.workspace = normalizeWorkspace({
+    name: document.querySelector("#workspaceNameInput").value,
+    databaseOwnerEmail: document.querySelector("#databaseOwnerInput").value,
+    adminEmails: document.querySelector("#adminEmailsInput").value,
+    apiUrl: document.querySelector("#apiUrlInput").value,
+    sheetId: document.querySelector("#sheetIdInput").value,
+    driveFolderId: document.querySelector("#driveFolderIdInput").value,
+    firebaseProjectId: document.querySelector("#firebaseProjectIdInput").value,
+    vapidPublicKey: document.querySelector("#vapidKeyInput").value
+  });
+  data.settings.role = getRoleForEmail(data.settings.userEmail);
+  saveData();
+  render();
+}
+
+function resetWorkspace() {
+  if (!canManageData()) return;
+  data.settings.workspace = structuredClone(defaultWorkspace);
+  data.settings.role = getRoleForEmail(data.settings.userEmail);
+  saveData();
+  render();
 }
 
 els.navButtons.forEach(btn => btn.addEventListener("click", () => setView(btn.dataset.view)));
@@ -1106,6 +1197,8 @@ els.enableNotifyBtn.addEventListener("click", async () => {
   await enableNotifications();
 });
 els.installAppBtn.addEventListener("click", installApp);
+els.workspaceForm.addEventListener("submit", saveWorkspace);
+els.resetWorkspaceBtn.addEventListener("click", resetWorkspace);
 els.addAssetBtn.addEventListener("click", () => {
   document.querySelector("#assetServiceInput").value = todayOffset(0);
   els.assetDialog.showModal();

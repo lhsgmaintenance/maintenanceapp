@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/lh-icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/lh-icon.svg">
-  <link rel="stylesheet" href="styles.css?v=20260515a">
+  <link rel="stylesheet" href="styles.css?v=20260515b">
 </head>
 <body>
   <aside class="sidebar">
@@ -160,24 +160,42 @@
 
     <section id="liveView" class="view">
       <div class="settings-panel">
-        <h3>Live Version Setup</h3>
-        <p>Internal staff version planned for Google Drive storage, PDF report filing, and email notifications.</p>
+        <h3>Workspace Setup</h3>
+        <p>Each branch can run this same app with its own admin emails, Google Sheet database, Drive folder, and Firebase push project.</p>
+        <form id="workspaceForm" class="workspace-form">
+          <div class="form-grid">
+            <label>Branch / Workspace Name<input id="workspaceNameInput" placeholder="LH Singapore Maintenance"></label>
+            <label>Database Owner Email<input id="databaseOwnerInput" type="email" placeholder="branchmaintenance@gmail.com"></label>
+            <label>Admin Emails<textarea id="adminEmailsInput" rows="4" placeholder="one admin email per line"></textarea></label>
+            <label>Google Apps Script URL<textarea id="apiUrlInput" rows="4" placeholder="https://script.google.com/macros/s/.../exec"></textarea></label>
+            <label>Google Sheet ID<input id="sheetIdInput" placeholder="Spreadsheet ID"></label>
+            <label>Drive Folder ID<input id="driveFolderIdInput" placeholder="Folder ID for reports and attachments"></label>
+            <label>Firebase Project ID<input id="firebaseProjectIdInput" placeholder="Firebase project ID"></label>
+            <label>Firebase VAPID Public Key<textarea id="vapidKeyInput" rows="4" placeholder="Web Push public key"></textarea></label>
+          </div>
+          <div class="dialog-actions">
+            <span id="workspaceStatus" class="hint"></span>
+            <span></span>
+            <button type="button" id="resetWorkspaceBtn" class="secondary">Use LHSG Default</button>
+            <button class="primary">Save Workspace</button>
+          </div>
+        </form>
         <div class="settings-grid">
           <div>
-            <strong>Database</strong>
-            <span>Google Drive or Google Sheets record storage for staff usage.</span>
+            <strong>Reusable Branch Setup</strong>
+            <span>Another country branch can enter their own admin email and Google database details without changing the app code.</span>
           </div>
           <div>
-            <strong>PDF Storage</strong>
-            <span>Completion reports to be saved into a selected Drive folder after Submit Done.</span>
+            <strong>Database Switching</strong>
+            <span>If one Google storage account is full, copy the Sheet and Drive folder, then update this workspace setup.</span>
           </div>
           <div>
-            <strong>Email Flow</strong>
-            <span>Send the completion PDF to the task admin or assigner email address.</span>
+            <strong>Authority</strong>
+            <span>Admin emails can assign and manage tasks. User emails only see their assigned work orders.</span>
           </div>
           <div>
-            <strong>User Registration</strong>
-            <span>Staff sign in or register with their own company email address.</span>
+            <strong>Live Backend</strong>
+            <span>Google Apps Script must enforce the same admin/user rules for real security.</span>
           </div>
         </div>
       </div>
@@ -244,6 +262,10 @@
         <button type="button" class="icon-btn" id="closeProfileBtn" aria-label="Close">x</button>
       </div>
       <label class="full">Your Email Address<input id="userEmailInput" type="email" placeholder="staff@company.com"></label>
+      <label class="full checkbox-line">
+        <input id="newWorkspaceAdminInput" type="checkbox">
+        Create a new branch workspace and make this email the admin
+      </label>
       <p id="roleInfo" class="hint">Stored on this browser for now. Live version will verify this email on the backend.</p>
       <div class="dialog-actions">
         <span></span>
@@ -323,6 +345,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=20260515a"></script>
+  <script src="app.js?v=20260515c"></script>
 </body>
 </html>
