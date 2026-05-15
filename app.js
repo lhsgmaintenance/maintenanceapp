@@ -357,11 +357,31 @@ function calendarItemsForMonth(year, month) {
     items[order.due].push({ kind: "work", label: `${order.id} ${order.title}`, orderId: order.id });
   });
   data.routines.forEach(routine => {
-    if (!isDateInMonth(routine.nextDue, year, month)) return;
-    items[routine.nextDue] = items[routine.nextDue] || [];
-    items[routine.nextDue].push({ kind: "routine", label: `Routine: ${routine.title}` });
+    routineDatesForMonth(routine, year, month).forEach(date => {
+      items[date] = items[date] || [];
+      items[date].push({ kind: "routine", label: `Routine: ${routine.title}` });
+    });
   });
   return items;
+}
+
+function routineDatesForMonth(routine, year, month) {
+  if (!routine.nextDue) return [];
+  const dates = [];
+  let due = routine.nextDue;
+  const monthStart = `${year}-${pad2(month + 1)}-01`;
+  const monthEnd = `${year}-${pad2(month + 1)}-${pad2(new Date(year, month + 1, 0).getDate())}`;
+  let guard = 0;
+  while (due < monthStart && guard < 60) {
+    due = nextRoutineDate(due, routine.frequencyDays);
+    guard += 1;
+  }
+  while (due <= monthEnd && guard < 80) {
+    if (isDateInMonth(due, year, month)) dates.push(due);
+    due = nextRoutineDate(due, routine.frequencyDays);
+    guard += 1;
+  }
+  return dates;
 }
 
 function renderNotifications() {
@@ -729,7 +749,7 @@ function generateOrderFromRoutine(id) {
     attachment: null
   };
   data.orders.unshift(order);
-  routine.nextDue = addDays(routine.nextDue, routine.frequencyDays);
+  routine.nextDue = nextRoutineDate(routine.nextDue, routine.frequencyDays);
   createAssignmentNotification(order);
   saveData();
   setView("orders");
@@ -989,6 +1009,26 @@ function addDays(dateText, days) {
   const date = new Date(`${dateText}T00:00:00`);
   date.setDate(date.getDate() + Number(days));
   return date.toISOString().slice(0, 10);
+}
+
+function nextRoutineDate(dateText, frequencyDays) {
+  if (Number(frequencyDays) === 30) return addMonths(dateText, 1);
+  if (Number(frequencyDays) === 60) return addMonths(dateText, 2);
+  if (Number(frequencyDays) === 90) return addMonths(dateText, 3);
+  if (Number(frequencyDays) === 180) return addMonths(dateText, 6);
+  if (Number(frequencyDays) === 365) return addMonths(dateText, 12);
+  return addDays(dateText, frequencyDays);
+}
+
+function addMonths(dateText, months) {
+  const parts = String(dateText).split("-").map(Number);
+  const year = parts[0];
+  const monthIndex = parts[1] - 1;
+  const day = parts[2];
+  const target = new Date(year, monthIndex + Number(months), 1);
+  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  target.setDate(Math.min(day, lastDay));
+  return `${target.getFullYear()}-${pad2(target.getMonth() + 1)}-${pad2(target.getDate())}`;
 }
 
 function pad2(value) {
