@@ -1,5 +1,5 @@
 {
-  "version": "1.4.0",
-  "build": "20260516f",
-  "notes": "Improved draft stability and responsiveness, sorted active tasks first, refreshed Firebase tokens automatically, added PNG notification icons, and added Chinese language selection."
+  "version": "1.4.1",
+  "build": "20260516g",
+  "notes": "Kept active task order stable after start/end, added Android notification badge asset, and documented pending long-idle push test."
 }

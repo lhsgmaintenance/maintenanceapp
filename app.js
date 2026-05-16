@@ -1,7 +1,7 @@
 const storeKey = "lhMaintenanceData";
 const legacyStoreKey = "maintenanceDeskData";
-const appVersion = "1.4.0";
-const appBuild = "20260516f";
+const appVersion = "1.4.1";
+const appBuild = "20260516g";
 const defaultApiUrl = "https://script.google.com/macros/s/AKfycbyOnhU47l57sR2xh0SgpaSR9Vt_dCYKYTQNmtYO1BH5of-5ILLwU_LUkxCkxtsHOmJw/exec";
 const legacyApiUrls = [
   "https://script.google.com/macros/s/AKfycbzfsye5T03XaH5YVY27i6Hk7T9frOHYtJ4XRPezG5xLhfQonBdWvjrLaMK0we_5mj0/exec"
@@ -710,20 +710,14 @@ function renderOrders() {
 }
 
 function sortOrdersForDisplay(orders) {
-  const statusRank = {
-    "Open": 0,
-    "In Progress": 1,
-    "Waiting Parts": 2,
-    "Completed": 9
-  };
-  return [...orders].sort((a, b) => {
-    const aCompleted = a.status === "Completed" ? 1 : 0;
-    const bCompleted = b.status === "Completed" ? 1 : 0;
+  return [...orders].map((order, index) => ({ order, index })).sort((a, b) => {
+    const left = a.order;
+    const right = b.order;
+    const aCompleted = left.status === "Completed" ? 1 : 0;
+    const bCompleted = right.status === "Completed" ? 1 : 0;
     if (aCompleted !== bCompleted) return aCompleted - bCompleted;
-    const rankDiff = (statusRank[a.status] ?? 5) - (statusRank[b.status] ?? 5);
-    if (rankDiff) return rankDiff;
-    return String(a.due || "").localeCompare(String(b.due || "")) || String(a.id || "").localeCompare(String(b.id || ""));
-  });
+    return a.index - b.index;
+  }).map(item => item.order);
 }
 
 function renderRoutines() {
@@ -1406,7 +1400,7 @@ function showBrowserNotification(notification) {
     tag: notification.orderId,
     data: { orderId: notification.orderId, url: `${location.origin}${location.pathname}#orders` },
     icon: "icons/lh-icon-192.png",
-    badge: "icons/lh-icon-192.png"
+    badge: "icons/lh-badge-96.png"
   };
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.ready
