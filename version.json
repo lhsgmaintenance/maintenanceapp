@@ -1,5 +1,5 @@
 {
-  "version": "1.4.2",
-  "build": "20260517a",
-  "notes": "Reduced comment glitches on start/end and made routine-generated work orders use assignment notification sync."
+  "version": "1.4.3",
+  "build": "20260517b",
+  "notes": "Added upload indicators, protected routine/work-order saves from refresh flicker, and locked checklist/comments until Start is saved."
 }

@@ -165,6 +165,34 @@ button {
   font-weight: 700;
 }
 
+.sync-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  margin: 6px 0 10px;
+  padding: 7px 10px;
+  border: 1px solid rgba(15, 111, 115, 0.24);
+  border-radius: 8px;
+  background: rgba(15, 111, 115, 0.08);
+  color: var(--accent-dark);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(15, 111, 115, 0.25);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .top-actions {
   margin-bottom: 0;
 }
@@ -307,6 +335,11 @@ button:disabled {
 .order-card.completed-card .meta,
 .order-card.completed-card .card-foot {
   color: #8a949a;
+}
+
+.order-card.syncing-card {
+  border-color: #2b8c8f;
+  background: #f7fcfc;
 }
 
 .order-card:hover {
