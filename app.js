@@ -1,7 +1,7 @@
 const storeKey = "lhMaintenanceData";
 const legacyStoreKey = "maintenanceDeskData";
-const appVersion = "1.4.3";
-const appBuild = "20260517b";
+const appVersion = "1.4.4";
+const appBuild = "20260517c";
 const defaultApiUrl = "https://script.google.com/macros/s/AKfycbyOnhU47l57sR2xh0SgpaSR9Vt_dCYKYTQNmtYO1BH5of-5ILLwU_LUkxCkxtsHOmJw/exec";
 const legacyApiUrls = [
   "https://script.google.com/macros/s/AKfycbzfsye5T03XaH5YVY27i6Hk7T9frOHYtJ4XRPezG5xLhfQonBdWvjrLaMK0we_5mj0/exec"
@@ -152,6 +152,7 @@ let firebaseMessaging = null;
 const pendingOrderSyncs = new Map();
 const pendingRoutineSyncs = new Map();
 let pendingAdminSyncs = 0;
+const dirtyOrderDrafts = new Set();
 
 const els = {
   viewTitle: document.querySelector("#viewTitle"),
@@ -315,9 +316,11 @@ function mergeRemoteData(remote) {
   const localUsers = normalizeUsers(localSettings.users || []);
   const localNotifications = data.notifications || [];
   const localDrafts = captureDraftUpdates();
-  data.orders = remote.orders || [];
+  const localOrders = data.orders || [];
+  const localRoutines = data.routines || [];
+  data.orders = mergePendingRemoteItems(remote.orders || [], localOrders, pendingOrderSyncs, "id");
   data.assets = remote.assets || [];
-  data.routines = remote.routines || [];
+  data.routines = mergePendingRemoteItems(remote.routines || [], localRoutines, pendingRoutineSyncs, "id");
   data.notifications = mergeNotifications(remote.notifications || [], localNotifications);
   data.settings = {
     ...localSettings,
@@ -333,6 +336,16 @@ function mergeRemoteData(remote) {
   data.settings.users = mergeUsers(data.settings.users || [], localUsers);
   data.settings.role = getRoleForEmail(data.settings.userEmail, data.settings.workspace);
   restoreDraftUpdates(localDrafts);
+}
+
+function mergePendingRemoteItems(remoteItems, localItems, pendingMap, keyField) {
+  if (!pendingMap || !pendingMap.size) return remoteItems;
+  const byKey = new Map(remoteItems.map(item => [String(item[keyField]), item]));
+  localItems.forEach(item => {
+    const key = String(item[keyField] || "");
+    if (pendingMap.has(key)) byKey.set(key, item);
+  });
+  return Array.from(byKey.values());
 }
 
 async function syncOrder(order, options = {}) {
@@ -414,7 +427,7 @@ function isEditingDraft() {
 }
 
 function hasPendingSync() {
-  return Boolean(pendingAdminSyncs || pendingOrderSyncs.size || pendingRoutineSyncs.size);
+  return Boolean(pendingAdminSyncs || pendingOrderSyncs.size || pendingRoutineSyncs.size || dirtyOrderDrafts.size);
 }
 
 function captureDraftUpdates() {
@@ -963,6 +976,7 @@ function orderCard(order) {
   const pendingLabel = pendingOrderSyncs.get(order.id) || "";
   const pending = Boolean(pendingLabel);
   const workUnlocked = editable && order.startedAt && !completed && !pending;
+  const displayedUpdate = completed ? completedUpdateText(order) : order.draftUpdate || "";
   const overdue = isOverdue(order) ? "Overdue" : order.due;
   const latest = order.updates.length ? order.updates[order.updates.length - 1] : order.details;
   const emailMeta = [order.assigneeEmail, order.adminEmail].filter(Boolean).join(" | ");
@@ -1004,7 +1018,7 @@ function orderCard(order) {
     ${checklistHtml}
     <div class="meta">${escapeHtml(timing)}</div>
     <label class="completion-note">${escapeHtml(t("latestUpdate"))}
-      <textarea class="completion-update" data-order-id="${escapeHtml(order.id)}" rows="2" placeholder="${escapeAttribute(order.startedAt ? t("updatePlaceholder") : "Press Start before editing updates.")}" ${workUnlocked ? "" : "disabled"}>${escapeHtml(order.draftUpdate || "")}</textarea>
+      <textarea class="completion-update" data-order-id="${escapeHtml(order.id)}" rows="2" placeholder="${escapeAttribute(order.startedAt ? t("updatePlaceholder") : "Press Start before editing updates.")}" ${workUnlocked ? "" : "disabled"}>${escapeHtml(displayedUpdate)}</textarea>
     </label>
     <div class="work-actions">
       <label class="secondary attachment-control">
@@ -1047,6 +1061,23 @@ function routineCard(routine) {
       <span>Next due ${escapeHtml(routine.nextDue)}</span>
     </div>
   </article>`;
+}
+
+function completedUpdateText(order) {
+  const updates = order.updates || [];
+  const systemPrefixes = [
+    "Work started at ",
+    "Work ended at ",
+    "Work completed and submitted at ",
+    "Live version email target: "
+  ];
+  for (let index = updates.length - 1; index >= 0; index -= 1) {
+    const update = String(updates[index] || "").trim();
+    if (!update) continue;
+    if (systemPrefixes.some(prefix => update.startsWith(prefix))) continue;
+    return update;
+  }
+  return order.draftUpdate || "";
 }
 
 function openOrderDialog(order = null) {
@@ -1278,6 +1309,7 @@ async function handleOrderAction(action, id) {
     order.status = "Completed";
     order.updates.push(note);
     order.draftUpdate = "";
+    dirtyOrderDrafts.delete(order.id);
     order.updates.push(`Work completed and submitted at ${formatDateTime(now)}.`);
     if (order.adminEmail) {
       order.updates.push(`Live version email target: ${order.adminEmail}.`);
@@ -1305,9 +1337,9 @@ function setChecklistStatus(orderId, index, status) {
   if (!order || !order.checklist[index]) return;
   if (!order.startedAt || order.status === "Completed" || pendingOrderSyncs.has(order.id) || !canEditOrder(order)) return;
   order.checklist[index].status = status;
+  dirtyOrderDrafts.add(order.id);
   saveData();
-  updateSyncStatus("ok", "Checklist saved locally. Uploading to Google...");
-  syncOrderInBackground(order, "Uploading checklist to Google...");
+  updateSyncStatus("ok", "Checklist saved on this device. Submit Done will upload to Google.");
 }
 
 async function saveWorkAttachment(input) {
@@ -2310,6 +2342,7 @@ document.body.addEventListener("input", event => {
   if (!order) return;
   if (!order.startedAt || order.status === "Completed" || pendingOrderSyncs.has(order.id)) return;
   order.draftUpdate = updateField.value;
+  dirtyOrderDrafts.add(order.id);
   saveData();
 });
 

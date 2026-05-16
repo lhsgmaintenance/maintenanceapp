@@ -1,5 +1,5 @@
 {
-  "version": "1.4.3",
-  "build": "20260517b",
-  "notes": "Added upload indicators, protected routine/work-order saves from refresh flicker, and locked checklist/comments until Start is saved."
+  "version": "1.4.4",
+  "build": "20260517c",
+  "notes": "Kept pending routines visible during sync, made checklist/comment edits local until Submit Done, and preserved completed comments."
 }
