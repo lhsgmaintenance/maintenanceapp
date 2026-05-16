@@ -1,4 +1,4 @@
-const cacheName = "lh-maintenance-v25";
+const cacheName = "lh-maintenance-v26";
 const appShell = [
   "./",
   "index.html",
@@ -6,7 +6,9 @@ const appShell = [
   "app.js",
   "version.json",
   "manifest.webmanifest",
-  "icons/lh-icon.svg"
+  "icons/lh-icon.svg",
+  "icons/lh-icon-192.png",
+  "icons/lh-icon-512.png"
 ];
 
 self.addEventListener("install", event => {
@@ -56,8 +58,8 @@ self.addEventListener("push", event => {
   event.waitUntil(self.registration.showNotification(title, {
     body,
     tag: orderId,
-    icon: "icons/lh-icon.svg",
-    badge: "icons/lh-icon.svg",
+    icon: "icons/lh-icon-192.png",
+    badge: "icons/lh-icon-192.png",
     data: { url, orderId }
   }));
 });

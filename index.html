@@ -16,8 +16,8 @@
   </script>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/lh-icon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="icons/lh-icon.svg">
-  <link rel="stylesheet" href="styles.css?v=20260516e">
+  <link rel="apple-touch-icon" href="icons/lh-icon-192.png">
+  <link rel="stylesheet" href="styles.css?v=20260516f">
 </head>
 <body>
   <div id="startupError" class="startup-error"></div>
@@ -64,6 +64,10 @@
       <div class="top-actions">
         <button id="installAppBtn" class="secondary hidden">Install App</button>
         <span id="roleStatus" class="access-pill">Not signed in</span>
+        <select id="languageSelect" class="secondary language-select" aria-label="Language">
+          <option value="en">English</option>
+          <option value="zh">中文</option>
+        </select>
         <button id="syncNowBtn" class="secondary">Sync Now</button>
         <button id="profileBtn" class="secondary">User Email</button>
         <button id="enableNotifyBtn" class="secondary">Enable Browser Alerts</button>
@@ -384,6 +388,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=20260516e"></script>
+  <script src="app.js?v=20260516f"></script>
 </body>
 </html>

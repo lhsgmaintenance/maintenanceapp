@@ -1,5 +1,5 @@
 {
-  "version": "1.3.2",
-  "build": "20260516e",
-  "notes": "Ensured older saved workspace settings inherit Firebase defaults for phone alert token registration."
+  "version": "1.4.0",
+  "build": "20260516f",
+  "notes": "Improved draft stability and responsiveness, sorted active tasks first, refreshed Firebase tokens automatically, added PNG notification icons, and added Chinese language selection."
 }

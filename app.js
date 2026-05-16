@@ -1,7 +1,7 @@
 const storeKey = "lhMaintenanceData";
 const legacyStoreKey = "maintenanceDeskData";
-const appVersion = "1.3.2";
-const appBuild = "20260516e";
+const appVersion = "1.4.0";
+const appBuild = "20260516f";
 const defaultApiUrl = "https://script.google.com/macros/s/AKfycbyOnhU47l57sR2xh0SgpaSR9Vt_dCYKYTQNmtYO1BH5of-5ILLwU_LUkxCkxtsHOmJw/exec";
 const legacyApiUrls = [
   "https://script.google.com/macros/s/AKfycbzfsye5T03XaH5YVY27i6Hk7T9frOHYtJ4XRPezG5xLhfQonBdWvjrLaMK0we_5mj0/exec"
@@ -193,6 +193,7 @@ const els = {
   updateText: document.querySelector("#updateText"),
   updateAppBtn: document.querySelector("#updateAppBtn"),
   syncNowBtn: document.querySelector("#syncNowBtn"),
+  languageSelect: document.querySelector("#languageSelect"),
   syncStatus: document.querySelector("#syncStatus")
 };
 
@@ -220,6 +221,7 @@ function normalizeData(loaded) {
   loaded.settings = loaded.settings || {};
   loaded.settings.userEmail = loaded.settings.userEmail || "";
   loaded.settings.username = loaded.settings.username || "";
+  loaded.settings.language = loaded.settings.language || "en";
   loaded.settings.users = normalizeUsers(loaded.settings.users || []);
   loaded.settings.workspace = normalizeWorkspace(loaded.settings.workspace);
   loaded.settings.role = getRoleForEmail(loaded.settings.userEmail, loaded.settings.workspace);
@@ -309,6 +311,7 @@ function mergeRemoteData(remote) {
   const localWorkspace = localSettings.workspace || {};
   const localUsers = normalizeUsers(localSettings.users || []);
   const localNotifications = data.notifications || [];
+  const localDrafts = captureDraftUpdates();
   data.orders = remote.orders || [];
   data.assets = remote.assets || [];
   data.routines = remote.routines || [];
@@ -326,6 +329,7 @@ function mergeRemoteData(remote) {
   data.settings.username = data.settings.username || localSettings.username || "";
   data.settings.users = mergeUsers(data.settings.users || [], localUsers);
   data.settings.role = getRoleForEmail(data.settings.userEmail, data.settings.workspace);
+  restoreDraftUpdates(localDrafts);
 }
 
 async function syncOrder(order, options = {}) {
@@ -358,7 +362,7 @@ function syncAllAdminInBackground() {
 }
 
 async function refreshRemoteData({ announceErrors = false } = {}) {
-  if (remoteRefreshInFlight || !backendUrl() || !data.settings.userEmail || document.hidden) return false;
+  if (remoteRefreshInFlight || !backendUrl() || !data.settings.userEmail || document.hidden || isEditingDraft()) return false;
   remoteRefreshInFlight = true;
   try {
     const loaded = await loadRemoteData();
@@ -372,6 +376,28 @@ async function refreshRemoteData({ announceErrors = false } = {}) {
   } finally {
     remoteRefreshInFlight = false;
   }
+}
+
+function isEditingDraft() {
+  return Boolean(document.activeElement && document.activeElement.closest && document.activeElement.closest(".completion-update"));
+}
+
+function captureDraftUpdates() {
+  const drafts = {};
+  data.orders.forEach(order => {
+    if (order.draftUpdate) drafts[order.id] = order.draftUpdate;
+  });
+  document.querySelectorAll(".completion-update").forEach(field => {
+    if (field.dataset.orderId && field.value.trim()) drafts[field.dataset.orderId] = field.value;
+  });
+  return drafts;
+}
+
+function restoreDraftUpdates(drafts) {
+  if (!drafts) return;
+  data.orders.forEach(order => {
+    if (order.status !== "Completed" && drafts[order.id]) order.draftUpdate = drafts[order.id];
+  });
 }
 
 function shortBackendUrl() {
@@ -505,6 +531,7 @@ function render() {
   data = normalizeData(data);
   data.settings.role = getRoleForEmail(data.settings.userEmail);
   applyWorkspacePushConfig();
+  applyLanguage();
   renderAccessControls();
   renderWorkspaceForm();
   renderDashboard();
@@ -522,28 +549,116 @@ function renderVersion() {
   if (els.appVersion) els.appVersion.textContent = `v${appVersion}`;
 }
 
+const translations = {
+  en: {
+    dashboard: "Dashboard",
+    orders: "Work Orders",
+    routines: "Routine Tasks",
+    notifications: "Notifications",
+    calendar: "Calendar",
+    team: "Team",
+    assets: "Assets",
+    reports: "Reports",
+    live: "Live Version",
+    syncNow: "Sync Now",
+    userEmail: "User Email",
+    enableAlerts: "Enable Browser Alerts",
+    newOrder: "New Work Order",
+    today: "Today",
+    open: "Open",
+    inProgress: "In Progress",
+    overdue: "Overdue",
+    completed: "Completed",
+    complete: "Complete",
+    urgentJobs: "Urgent Jobs",
+    upcomingSchedule: "Upcoming Schedule",
+    noUrgent: "No urgent open jobs.",
+    noUpcoming: "No upcoming work.",
+    noOrders: "No work orders match the current filters.",
+    latestUpdate: "Latest Update Before Submit",
+    updatePlaceholder: "Write what happened, or type N/A",
+    addAttachment: "Add Attachment",
+    replaceAttachment: "Replace Attachment",
+    noAttachment: "No attachment added.",
+    start: "Start",
+    end: "End",
+    submitDone: "Submit Done",
+    submitting: "Submitting...",
+    pdfReport: "PDF Report",
+    notStarted: "Not started",
+    userMode: "User mode",
+    adminMode: "Admin mode",
+    notSignedIn: "Not signed in"
+  },
+  zh: {
+    dashboard: "仪表板",
+    orders: "工单",
+    routines: "定期任务",
+    notifications: "通知",
+    calendar: "日历",
+    team: "团队",
+    assets: "设备",
+    reports: "报告",
+    live: "实时版本",
+    syncNow: "立即同步",
+    userEmail: "用户邮箱",
+    enableAlerts: "启用手机通知",
+    newOrder: "新建工单",
+    today: "今天",
+    open: "待处理",
+    inProgress: "进行中",
+    overdue: "逾期",
+    completed: "已完成",
+    complete: "完成",
+    urgentJobs: "紧急工单",
+    upcomingSchedule: "即将到期",
+    noUrgent: "没有紧急未完成工单。",
+    noUpcoming: "没有即将到期的工单。",
+    noOrders: "没有符合筛选条件的工单。",
+    latestUpdate: "提交前最新备注",
+    updatePlaceholder: "填写处理情况，或输入 N/A",
+    addAttachment: "添加附件",
+    replaceAttachment: "更换附件",
+    noAttachment: "没有附件。",
+    start: "开始",
+    end: "结束",
+    submitDone: "提交完成",
+    submitting: "提交中...",
+    pdfReport: "PDF 报告",
+    notStarted: "尚未开始",
+    userMode: "用户模式",
+    adminMode: "管理员模式",
+    notSignedIn: "未登录"
+  }
+};
+
+function t(key) {
+  const language = data && data.settings ? data.settings.language || "en" : "en";
+  return (translations[language] && translations[language][key]) || translations.en[key] || key;
+}
+
+function applyLanguage() {
+  if (els.languageSelect) els.languageSelect.value = data.settings.language || "en";
+  els.navButtons.forEach(btn => {
+    if (translations.en[btn.dataset.view]) btn.textContent = t(btn.dataset.view);
+  });
+  if (els.syncNowBtn) els.syncNowBtn.textContent = t("syncNow");
+  if (els.profileBtn && !data.settings.userEmail) els.profileBtn.textContent = t("userEmail");
+  if (els.enableNotifyBtn) els.enableNotifyBtn.textContent = t("enableAlerts");
+  if (els.newOrderBtn) els.newOrderBtn.textContent = t("newOrder");
+  document.querySelectorAll(".eyebrow").forEach(el => el.textContent = t("today"));
+}
+
 function setView(view) {
   if (!canUseView(view)) view = "orders";
   activeView = view;
-  els.viewTitle.textContent = viewLabels[view];
+  els.viewTitle.textContent = t(view);
   els.navButtons.forEach(btn => btn.classList.toggle("active", btn.dataset.view === view));
   els.views.forEach(viewEl => viewEl.classList.toggle("active", viewEl.id === `${view}View`));
   if (["dashboard", "orders", "notifications"].includes(view)) {
     refreshRemoteData();
   }
 }
-
-const viewLabels = {
-  dashboard: "Dashboard",
-  orders: "Work Orders",
-  routines: "Routine Tasks",
-  notifications: "Notifications",
-  calendar: "Calendar",
-  team: "Team",
-  assets: "Assets",
-  reports: "Reports",
-  live: "Live Version"
-};
 
 function renderDashboard() {
   const orders = visibleOrders();
@@ -555,6 +670,12 @@ function renderDashboard() {
   setText("statProgress", progress);
   setText("statOverdue", overdue);
   setText("statDone", done);
+  document.querySelectorAll(".stat span")[0].textContent = t("open");
+  document.querySelectorAll(".stat span")[1].textContent = t("inProgress");
+  document.querySelectorAll(".stat span")[2].textContent = t("overdue");
+  document.querySelectorAll(".stat span")[3].textContent = t("completed");
+  document.querySelector("#dashboardView .section-head h3").textContent = t("urgentJobs");
+  document.querySelector("#dashboardView .split section:nth-child(2) .section-head h3").textContent = t("upcomingSchedule");
 
   const urgent = orders
     .filter(o => o.status !== "Completed" && ["Critical", "High"].includes(o.priority))
@@ -562,7 +683,7 @@ function renderDashboard() {
     .slice(0, 5);
   document.querySelector("#urgentList").innerHTML = urgent.length
     ? urgent.map(orderCard).join("")
-    : empty("No urgent open jobs.");
+    : empty(t("noUrgent"));
 
   const schedule = orders
     .filter(o => o.status !== "Completed")
@@ -570,22 +691,39 @@ function renderDashboard() {
     .slice(0, 6);
   document.querySelector("#scheduleList").innerHTML = schedule.length
     ? schedule.map(o => `<button class="timeline-item order-shortcut" data-order-id="${escapeHtml(o.id)}"><strong>${escapeHtml(o.due)}</strong><br>${escapeHtml(o.title)} - ${escapeHtml(o.assignee)}</button>`).join("")
-    : empty("No upcoming work.");
+    : empty(t("noUpcoming"));
 }
 
 function renderOrders() {
   const query = els.searchInput.value.trim().toLowerCase();
   const status = els.statusFilter.value;
   const priority = els.priorityFilter.value;
-  const filtered = visibleOrders().filter(order => {
+  const filtered = sortOrdersForDisplay(visibleOrders().filter(order => {
     const text = `${order.id} ${order.title} ${order.asset} ${order.area} ${order.assignee}`.toLowerCase();
     return (!query || text.includes(query))
       && (status === "all" || order.status === status)
       && (priority === "all" || order.priority === priority);
-  });
+  }));
   document.querySelector("#ordersList").innerHTML = filtered.length
     ? filtered.map(orderCard).join("")
-    : empty("No work orders match the current filters.");
+    : empty(t("noOrders"));
+}
+
+function sortOrdersForDisplay(orders) {
+  const statusRank = {
+    "Open": 0,
+    "In Progress": 1,
+    "Waiting Parts": 2,
+    "Completed": 9
+  };
+  return [...orders].sort((a, b) => {
+    const aCompleted = a.status === "Completed" ? 1 : 0;
+    const bCompleted = b.status === "Completed" ? 1 : 0;
+    if (aCompleted !== bCompleted) return aCompleted - bCompleted;
+    const rankDiff = (statusRank[a.status] ?? 5) - (statusRank[b.status] ?? 5);
+    if (rankDiff) return rankDiff;
+    return String(a.due || "").localeCompare(String(b.due || "")) || String(a.id || "").localeCompare(String(b.id || ""));
+  });
 }
 
 function renderRoutines() {
@@ -798,11 +936,11 @@ function orderCard(order) {
   const emailMeta = [order.assigneeEmail, order.adminEmail].filter(Boolean).join(" | ");
   const attachmentHtml = order.attachment
     ? `<a class="attachment-link" href="${escapeAttribute(order.attachment.dataUrl)}" download="${escapeAttribute(order.attachment.name)}">Attachment: ${escapeHtml(order.attachment.name)}</a>`
-    : `<span class="hint">No attachment added.</span>`;
-  const attachmentLabel = order.attachment ? "Replace Attachment" : "Add Attachment";
+    : `<span class="hint">${escapeHtml(t("noAttachment"))}</span>`;
+  const attachmentLabel = order.attachment ? t("replaceAttachment") : t("addAttachment");
   const timing = order.startedAt
     ? `Started ${formatDateTime(order.startedAt)}${order.endedAt ? ` | Ended ${formatDateTime(order.endedAt)}` : ""}`
-    : "Not started";
+    : t("notStarted");
   const canStart = editable && !completed && !order.startedAt;
   const canEnd = editable && !completed && order.startedAt && !order.endedAt;
   const canSubmit = editable && !completed && order.startedAt && order.endedAt;
@@ -816,7 +954,7 @@ function orderCard(order) {
       </div>`
     : "";
   const statusText = completed ? "Complete" : order.status;
-  return `<article class="order-card ${manageable ? "" : "readonly-card"} ${completed ? "completed-card" : ""}" data-order-id="${escapeHtml(order.id)}">
+  return `<article class="order-card ${manageable ? "" : "readonly-card"} ${completed ? "completed-card" : "active-card"}" data-order-id="${escapeHtml(order.id)}">
     <header>
       <div>
         <h4>${escapeHtml(order.id)} - ${escapeHtml(order.title)}</h4>
@@ -824,7 +962,7 @@ function orderCard(order) {
         ${emailMeta ? `<div class="meta">${escapeHtml(emailMeta)}</div>` : ""}
       </div>
       <div class="card-badges">
-        ${completed ? `<span class="complete-pill">Complete</span>` : ""}
+        ${completed ? `<span class="complete-pill">${escapeHtml(t("complete"))}</span>` : ""}
         <span class="pill ${escapeHtml(order.priority)}">${escapeHtml(order.priority)}</span>
       </div>
     </header>
@@ -832,18 +970,18 @@ function orderCard(order) {
     ${attachmentHtml}
     ${checklistHtml}
     <div class="meta">${escapeHtml(timing)}</div>
-    <label class="completion-note">Latest Update Before Submit
-      <textarea class="completion-update" data-order-id="${escapeHtml(order.id)}" rows="2" placeholder="Write what happened, or type N/A">${escapeHtml(order.draftUpdate || "N/A")}</textarea>
+    <label class="completion-note">${escapeHtml(t("latestUpdate"))}
+      <textarea class="completion-update" data-order-id="${escapeHtml(order.id)}" rows="2" placeholder="${escapeAttribute(t("updatePlaceholder"))}">${escapeHtml(order.draftUpdate || "")}</textarea>
     </label>
     <div class="work-actions">
       <label class="secondary attachment-control">
         ${escapeHtml(attachmentLabel)}
         <input class="work-attachment-input" data-order-id="${escapeHtml(order.id)}" type="file" ${editable && !completed ? "" : "disabled"}>
       </label>
-      <button class="secondary order-action" data-action="start" data-order-id="${escapeHtml(order.id)}" ${canStart ? "" : "disabled"}>Start</button>
-      <button class="secondary order-action" data-action="end" data-order-id="${escapeHtml(order.id)}" ${canEnd ? "" : "disabled"}>End</button>
-      <button class="primary order-action" data-action="submit" data-order-id="${escapeHtml(order.id)}" ${canSubmit ? "" : "disabled"}>Submit Done</button>
-      <button class="secondary order-action" data-action="pdf" data-order-id="${escapeHtml(order.id)}" ${completed ? "" : "disabled"}>PDF Report</button>
+      <button class="secondary order-action" data-action="start" data-order-id="${escapeHtml(order.id)}" ${canStart ? "" : "disabled"}>${escapeHtml(t("start"))}</button>
+      <button class="secondary order-action" data-action="end" data-order-id="${escapeHtml(order.id)}" ${canEnd ? "" : "disabled"}>${escapeHtml(t("end"))}</button>
+      <button class="primary order-action" data-action="submit" data-order-id="${escapeHtml(order.id)}" ${canSubmit ? "" : "disabled"}>${escapeHtml(t("submitDone"))}</button>
+      <button class="secondary order-action" data-action="pdf" data-order-id="${escapeHtml(order.id)}" ${completed ? "" : "disabled"}>${escapeHtml(t("pdfReport"))}</button>
     </div>
     <div class="card-foot">
       <span>${escapeHtml(statusText)}</span>
@@ -1267,8 +1405,8 @@ function showBrowserNotification(notification) {
     body: notification.message,
     tag: notification.orderId,
     data: { orderId: notification.orderId, url: `${location.origin}${location.pathname}#orders` },
-    icon: "icons/lh-icon.svg",
-    badge: "icons/lh-icon.svg"
+    icon: "icons/lh-icon-192.png",
+    badge: "icons/lh-icon-192.png"
   };
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.ready
@@ -1302,6 +1440,17 @@ async function initPwa() {
   checkForAppUpdate();
   await refreshRemoteData();
   startRemoteRefresh();
+  refreshPushTokenIfAllowed();
+}
+
+function refreshPushTokenIfAllowed() {
+  if (!("Notification" in window) || Notification.permission !== "granted" || !data.settings.userEmail) return;
+  const savedAt = data.settings.pushSubscription && data.settings.pushSubscription.savedAt
+    ? new Date(data.settings.pushSubscription.savedAt).getTime()
+    : 0;
+  const sixHours = 6 * 60 * 60 * 1000;
+  if (Date.now() - savedAt < sixHours) return;
+  savePushSubscription({ silent: true }).catch(() => {});
 }
 
 async function checkForAppUpdate() {
@@ -1369,16 +1518,16 @@ async function enableNotifications() {
   renderNotifications();
 }
 
-async function savePushSubscription() {
-  const firebaseSaved = await saveFirebaseMessagingToken();
+async function savePushSubscription(options = {}) {
+  const firebaseSaved = await saveFirebaseMessagingToken(options);
   if (firebaseSaved) {
-    updateSyncStatus("ok", "Firebase phone alerts enabled on this device.");
+    if (!options.silent) updateSyncStatus("ok", "Firebase phone alerts enabled on this device.");
     return;
   }
 
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
   if (!pushConfig.publicVapidKey || !pushConfig.subscribeEndpoint) {
-    updateSyncStatus("error", "Browser alerts could not be saved. Firebase setup is incomplete.");
+    if (!options.silent) updateSyncStatus("error", "Browser alerts could not be saved. Firebase setup is incomplete.");
     return;
   }
 
@@ -1391,18 +1540,18 @@ async function savePushSubscription() {
   saveData();
 
   await postRemote("savePushToken", { subscription: data.settings.pushSubscription });
-  updateSyncStatus("ok", "Browser push token saved on this device.");
+  if (!options.silent) updateSyncStatus("ok", "Browser push token saved on this device.");
 }
 
-async function saveFirebaseMessagingToken() {
+async function saveFirebaseMessagingToken(options = {}) {
   if (!firebaseConfigReady()) return false;
   if (!("serviceWorker" in navigator)) {
-    updateSyncStatus("error", "This browser has no service worker support for Firebase alerts.");
+    if (!options.silent) updateSyncStatus("error", "This browser has no service worker support for Firebase alerts.");
     return false;
   }
   await loadFirebaseSdk();
   if (!window.firebase || !window.firebase.messaging || !window.firebase.messaging.isSupported()) {
-    updateSyncStatus("error", "Firebase messaging is not supported on this browser.");
+    if (!options.silent) updateSyncStatus("error", "Firebase messaging is not supported on this browser.");
     return false;
   }
 
@@ -1427,7 +1576,7 @@ async function saveFirebaseMessagingToken() {
     serviceWorkerRegistration: registration
   });
   if (!token) {
-    updateSyncStatus("error", "Firebase did not return a phone alert token.");
+    if (!options.silent) updateSyncStatus("error", "Firebase did not return a phone alert token.");
     return false;
   }
   data.settings.pushSubscription = {
@@ -1441,7 +1590,7 @@ async function saveFirebaseMessagingToken() {
     token,
     subscription: data.settings.pushSubscription
   });
-  updateSyncStatus("ok", `Firebase token saved ${formatTimeOnly(new Date())}.`);
+  if (!options.silent) updateSyncStatus("ok", `Firebase token saved ${formatTimeOnly(new Date())}.`);
   return true;
 }
 
@@ -1804,10 +1953,10 @@ function renderAccessControls() {
   });
   els.profileBtn.textContent = data.settings.userEmail
     ? `${data.settings.role === "admin" ? "Admin" : "User"}: ${data.settings.userEmail}`
-    : "User Email";
+    : t("userEmail");
   els.roleStatus.textContent = data.settings.userEmail
-    ? `${data.settings.role === "admin" ? "Admin" : "User"} mode`
-    : "Not signed in";
+    ? (data.settings.role === "admin" ? t("adminMode") : t("userMode"))
+    : t("notSignedIn");
   els.roleStatus.classList.toggle("admin", data.settings.role === "admin");
   els.roleStatus.classList.toggle("user", data.settings.role === "user" && Boolean(data.settings.userEmail));
   renderUserList();
@@ -2000,6 +2149,14 @@ els.enableNotifyBtn.addEventListener("click", async () => {
 els.installAppBtn.addEventListener("click", installApp);
 els.updateAppBtn.addEventListener("click", updateApp);
 els.syncNowBtn.addEventListener("click", syncNow);
+if (els.languageSelect) {
+  els.languageSelect.addEventListener("change", () => {
+    data.settings.language = els.languageSelect.value;
+    saveData();
+    render();
+    setView(activeView);
+  });
+}
 if (els.workspaceForm) els.workspaceForm.addEventListener("submit", saveWorkspace);
 if (els.resetWorkspaceBtn) els.resetWorkspaceBtn.addEventListener("click", resetWorkspace);
 els.addAssetBtn.addEventListener("click", () => {
@@ -2033,7 +2190,7 @@ document.body.addEventListener("click", event => {
     const action = orderAction.dataset.action;
     const orderId = orderAction.dataset.orderId;
     orderAction.disabled = true;
-    if (action === "submit") orderAction.textContent = "Submitting...";
+    if (action === "submit") orderAction.textContent = t("submitting");
     Promise.resolve(handleOrderAction(action, orderId)).finally(() => {
       const order = data.orders.find(item => item.id === orderId);
       if (orderAction.isConnected && order && order.status !== "Completed") {
@@ -2116,10 +2273,14 @@ document.body.addEventListener("input", event => {
 
 window.addEventListener("focus", () => {
   refreshRemoteData();
+  refreshPushTokenIfAllowed();
 });
 
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") refreshRemoteData();
+  if (document.visibilityState === "visible") {
+    refreshRemoteData();
+    refreshPushTokenIfAllowed();
+  }
 });
 
 setView(activeView);
