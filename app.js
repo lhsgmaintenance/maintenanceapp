@@ -1,7 +1,7 @@
 const storeKey = "lhMaintenanceData";
 const legacyStoreKey = "maintenanceDeskData";
-const appVersion = "1.4.1";
-const appBuild = "20260516g";
+const appVersion = "1.4.2";
+const appBuild = "20260517a";
 const defaultApiUrl = "https://script.google.com/macros/s/AKfycbyOnhU47l57sR2xh0SgpaSR9Vt_dCYKYTQNmtYO1BH5of-5ILLwU_LUkxCkxtsHOmJw/exec";
 const legacyApiUrls = [
   "https://script.google.com/macros/s/AKfycbzfsye5T03XaH5YVY27i6Hk7T9frOHYtJ4XRPezG5xLhfQonBdWvjrLaMK0we_5mj0/exec"
@@ -345,7 +345,7 @@ async function syncOrder(order, options = {}) {
 async function syncAllAdmin(options = {}) {
   if (!canManageData()) return;
   try {
-    await postRemote("saveAll", { data });
+    await postRemote("saveAll", { data: options.data || data });
     updateSyncStatus("ok", `Saved to Google ${formatTimeOnly(new Date())}.`);
   } catch (err) {
     updateSyncStatus("error", `Google sync pending: ${err.message}`);
@@ -359,6 +359,10 @@ function syncOrderInBackground(order) {
 
 function syncAllAdminInBackground() {
   syncAllAdmin({ silent: true });
+}
+
+function syncSnapshotInBackground(snapshot) {
+  syncAllAdmin({ silent: true, data: cloneData(snapshot) });
 }
 
 async function refreshRemoteData({ announceErrors = false } = {}) {
@@ -1200,8 +1204,8 @@ async function generateOrderFromRoutine(id) {
   saveData();
   setView("orders");
   render();
-  updateSyncStatus("ok", "Created locally. Syncing to Google...");
-  syncAllAdminInBackground();
+  updateSyncStatus("ok", "Created locally. Sending assignment notification...");
+  syncOrderInBackground(order);
 }
 
 async function handleOrderAction(action, id) {
@@ -1209,7 +1213,7 @@ async function handleOrderAction(action, id) {
   if (!order) return;
   if (action !== "pdf" && !canEditOrder(order)) return;
   const now = new Date().toISOString();
-  saveDraftUpdateFromPage(order);
+  if (action === "submit") saveDraftUpdateFromPage(order);
   if (action === "start") {
     order.startedAt = now;
     order.status = "In Progress";

@@ -1,5 +1,5 @@
 {
-  "version": "1.4.1",
-  "build": "20260516g",
-  "notes": "Kept active task order stable after start/end, added Android notification badge asset, and documented pending long-idle push test."
+  "version": "1.4.2",
+  "build": "20260517a",
+  "notes": "Reduced comment glitches on start/end and made routine-generated work orders use assignment notification sync."
 }
