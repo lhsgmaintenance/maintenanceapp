@@ -17,7 +17,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/lh-icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/lh-icon-192.png">
-  <link rel="stylesheet" href="styles.css?v=20260517c">
+  <link rel="stylesheet" href="styles.css?v=20260518a">
 </head>
 <body>
   <div id="startupError" class="startup-error"></div>
@@ -248,13 +248,16 @@
         <button type="button" class="icon-btn" id="closeDialogBtn" aria-label="Close">x</button>
       </div>
       <input type="hidden" id="orderId">
+      <input type="hidden" id="sourceRoutineId">
       <div class="form-grid">
         <label>Title<input id="titleInput" required></label>
         <label>Asset<input id="assetInput" required></label>
         <label>Area<input id="areaInput" required></label>
-        <label>Assigned To<input id="assigneeInput" list="userList" required></label>
+        <label>Assigned To 1<input id="assigneeInput" list="userList" required></label>
         <datalist id="userList"></datalist>
-        <label>Assignee Email<input id="assigneeEmailInput" type="email" placeholder="optional"></label>
+        <label>Assignee 1 Email<input id="assigneeEmailInput" type="email" placeholder="optional"></label>
+        <label>Assigned To 2<input id="assignee2Input" list="userList" placeholder="optional"></label>
+        <label>Assignee 2 Email<input id="assignee2EmailInput" type="email" placeholder="optional"></label>
         <label>Admin / Assigner Email<input id="adminEmailInput" type="email" placeholder="optional"></label>
         <label>Task Type
           <select id="taskTypeInput">
@@ -349,7 +352,7 @@
         <label>Task Name<input id="routineTitleInput" required></label>
         <label>Asset<input id="routineAssetInput" required></label>
         <label>Area<input id="routineAreaInput" required></label>
-        <label>Assigned To<input id="routineAssigneeInput" list="userList" required></label>
+        <label>Default Assigned To<input id="routineAssigneeInput" list="userList" placeholder="optional"></label>
         <label>Assignee Email<input id="routineAssigneeEmailInput" type="email" placeholder="optional"></label>
         <label>Task Type
           <select id="routineTaskTypeInput">
@@ -388,6 +391,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=20260517c"></script>
+  <script src="app.js?v=20260518a"></script>
 </body>
 </html>

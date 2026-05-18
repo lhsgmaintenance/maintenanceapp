@@ -1,7 +1,7 @@
 const storeKey = "lhMaintenanceData";
 const legacyStoreKey = "maintenanceDeskData";
-const appVersion = "1.4.4";
-const appBuild = "20260517c";
+const appVersion = "1.4.5";
+const appBuild = "20260518a";
 const defaultApiUrl = "https://script.google.com/macros/s/AKfycbyOnhU47l57sR2xh0SgpaSR9Vt_dCYKYTQNmtYO1BH5of-5ILLwU_LUkxCkxtsHOmJw/exec";
 const legacyApiUrls = [
   "https://script.google.com/macros/s/AKfycbzfsye5T03XaH5YVY27i6Hk7T9frOHYtJ4XRPezG5xLhfQonBdWvjrLaMK0we_5mj0/exec"
@@ -226,6 +226,7 @@ function normalizeData(loaded) {
   loaded.settings.userEmail = loaded.settings.userEmail || "";
   loaded.settings.username = loaded.settings.username || "";
   loaded.settings.language = loaded.settings.language || "en";
+  loaded.settings.routineReminderKeys = Array.isArray(loaded.settings.routineReminderKeys) ? loaded.settings.routineReminderKeys : [];
   loaded.settings.users = normalizeUsers(loaded.settings.users || []);
   loaded.settings.workspace = normalizeWorkspace(loaded.settings.workspace);
   loaded.settings.role = getRoleForEmail(loaded.settings.userEmail, loaded.settings.workspace);
@@ -242,7 +243,13 @@ function normalizeData(loaded) {
       status: item.status || (item.checked ? "ok" : "")
     }));
     order.updates = order.updates || [];
+    order.assignee = order.assignee || "";
+    order.assignee2 = order.assignee2 || "";
     order.assigneeEmail = normalizeEmail(order.assigneeEmail);
+    order.assignee2Email = normalizeEmail(order.assignee2Email);
+    order.assigneeEmails = assigneeEmailsForOrder(order);
+    order.activeWorkerEmail = normalizeEmail(order.activeWorkerEmail);
+    order.activeWorkerName = order.activeWorkerName || "";
     order.adminEmail = normalizeEmail(order.adminEmail);
     order.attachment = order.attachment || null;
   });
@@ -258,6 +265,7 @@ function normalizeData(loaded) {
   });
   loaded.routines.forEach(routine => {
     routine.taskType = routine.taskType || "Routine Maintenance";
+    routine.assignee = routine.assignee || "";
     routine.assigneeEmail = normalizeEmail(routine.assigneeEmail);
     routine.checklist = routine.checklist || (routine.details
       ? routine.details.split(",").map(item => item.trim()).filter(Boolean)
@@ -487,6 +495,7 @@ function remoteSnapshot() {
       status: order.status,
       assignee: order.assignee,
       assigneeEmail: normalizeEmail(order.assigneeEmail),
+      assigneeEmails: assigneeEmailsForOrder(order),
       adminEmail: normalizeEmail(order.adminEmail),
       updateCount: (order.updates || []).length,
       latestUpdate: (order.updates || []).slice(-1)[0] || ""
@@ -575,6 +584,36 @@ function mergeNotifications(primaryNotifications, fallbackNotifications) {
   return Object.values(byKey).sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
 }
 
+function createDueRoutineReminders() {
+  if (!canManageData()) return;
+  const today = todayOffset(0);
+  const keys = new Set(data.settings.routineReminderKeys || []);
+  const adminRecipients = ((data.settings.workspace && data.settings.workspace.adminEmails) || []).map(normalizeEmail).filter(Boolean);
+  let changed = false;
+  data.routines.forEach(routine => {
+    if (!routine.nextDue || routine.nextDue > today) return;
+    const key = `${routine.id}|${routine.nextDue}`;
+    if (keys.has(key)) return;
+    keys.add(key);
+    changed = true;
+    addLocalNotification({
+      id: `RT-REM-${routine.id}-${routine.nextDue}`,
+      type: "routine-reminder",
+      assignee: "Admin",
+      assigneeEmail: "",
+      adminEmail: normalizeEmail(data.settings.userEmail),
+      recipients: adminRecipients,
+      orderId: routine.id,
+      title: `Routine due today: ${routine.title}`,
+      message: `${routine.id} is due on ${routine.nextDue}. Create today's work order when ready.`
+    });
+  });
+  if (changed) {
+    data.settings.routineReminderKeys = Array.from(keys).slice(-200);
+    saveData();
+  }
+}
+
 function render() {
   data = normalizeData(data);
   data.settings.role = getRoleForEmail(data.settings.userEmail);
@@ -585,6 +624,7 @@ function render() {
   renderDashboard();
   renderOrders();
   renderRoutines();
+  createDueRoutineReminders();
   renderNotifications();
   renderCalendar();
   renderTeam();
@@ -738,7 +778,7 @@ function renderDashboard() {
     .sort((a, b) => a.due.localeCompare(b.due))
     .slice(0, 6);
   document.querySelector("#scheduleList").innerHTML = schedule.length
-    ? schedule.map(o => `<button class="timeline-item order-shortcut" data-order-id="${escapeHtml(o.id)}"><strong>${escapeHtml(o.due)}</strong><br>${escapeHtml(o.title)} - ${escapeHtml(o.assignee)}</button>`).join("")
+    ? schedule.map(o => `<button class="timeline-item order-shortcut" data-order-id="${escapeHtml(o.id)}"><strong>${escapeHtml(o.due)}</strong><br>${escapeHtml(o.title)} - ${escapeHtml(assigneeDisplay(o))}</button>`).join("")
     : empty(t("noUpcoming"));
 }
 
@@ -747,7 +787,7 @@ function renderOrders() {
   const status = els.statusFilter.value;
   const priority = els.priorityFilter.value;
   const filtered = sortOrdersForDisplay(visibleOrders().filter(order => {
-    const text = `${order.id} ${order.title} ${order.asset} ${order.area} ${order.assignee}`.toLowerCase();
+    const text = `${order.id} ${order.title} ${order.asset} ${order.area} ${order.assignee} ${order.assignee2} ${assigneeEmailsForOrder(order).join(" ")}`.toLowerCase();
     return (!query || text.includes(query))
       && (status === "all" || order.status === status)
       && (priority === "all" || order.priority === priority);
@@ -764,8 +804,19 @@ function sortOrdersForDisplay(orders) {
     const aCompleted = left.status === "Completed" ? 1 : 0;
     const bCompleted = right.status === "Completed" ? 1 : 0;
     if (aCompleted !== bCompleted) return aCompleted - bCompleted;
+    if (aCompleted && bCompleted) {
+      const aDone = completedSortTime(left);
+      const bDone = completedSortTime(right);
+      if (aDone !== bDone) return bDone - aDone;
+    }
     return a.index - b.index;
   }).map(item => item.order);
+}
+
+function completedSortTime(order) {
+  const value = order.completedAt || order.endedAt || "";
+  const time = value ? Date.parse(value) : 0;
+  return Number.isFinite(time) ? time : 0;
 }
 
 function renderRoutines() {
@@ -877,7 +928,7 @@ function renderTeam() {
     : empty("No active team assignments.");
   const registeredUsers = data.settings.users.length
     ? `<div class="user-directory">${data.settings.users.map(user => {
-      const jobs = data.orders.filter(order => normalizeEmail(order.assigneeEmail) === normalizeEmail(user.email) && order.status !== "Completed").length;
+      const jobs = data.orders.filter(order => assigneeEmailsForOrder(order).includes(normalizeEmail(user.email)) && order.status !== "Completed").length;
       return `<article class="team-card user-card">
         <h4>${escapeHtml(user.username)}</h4>
         <p class="meta">${escapeHtml(user.email)}</p>
@@ -979,7 +1030,8 @@ function orderCard(order) {
   const displayedUpdate = completed ? completedUpdateText(order) : order.draftUpdate || "";
   const overdue = isOverdue(order) ? "Overdue" : order.due;
   const latest = order.updates.length ? order.updates[order.updates.length - 1] : order.details;
-  const emailMeta = [order.assigneeEmail, order.adminEmail].filter(Boolean).join(" | ");
+  const assigneeMeta = assigneeDisplay(order);
+  const emailMeta = [...assigneeEmailsForOrder(order), order.adminEmail].filter(Boolean).join(" | ");
   const attachmentHtml = order.attachment
     ? `<a class="attachment-link" href="${escapeAttribute(order.attachment.dataUrl)}" download="${escapeAttribute(order.attachment.name)}">Attachment: ${escapeHtml(order.attachment.name)}</a>`
     : `<span class="hint">${escapeHtml(t("noAttachment"))}</span>`;
@@ -1004,7 +1056,8 @@ function orderCard(order) {
     <header>
       <div>
         <h4>${escapeHtml(order.id)} - ${escapeHtml(order.title)}</h4>
-        <div class="meta">${escapeHtml(order.asset)} | ${escapeHtml(order.area)} | ${escapeHtml(order.assignee)} | ${escapeHtml(order.taskType || "Breakdown")}</div>
+        <div class="meta">${escapeHtml(order.asset)} | ${escapeHtml(order.area)} | ${escapeHtml(assigneeMeta)} | ${escapeHtml(order.taskType || "Breakdown")}</div>
+        ${order.activeWorkerName || order.activeWorkerEmail ? `<div class="meta">Started by ${escapeHtml(order.activeWorkerName || order.activeWorkerEmail)}</div>` : ""}
         ${emailMeta ? `<div class="meta">${escapeHtml(emailMeta)}</div>` : ""}
       </div>
       <div class="card-badges">
@@ -1047,7 +1100,7 @@ function routineCard(routine) {
     <header>
       <div>
         <h4>${escapeHtml(routine.id)} - ${escapeHtml(routine.title)}</h4>
-        <div class="meta">${escapeHtml(routine.asset)} | ${escapeHtml(routine.area)} | ${escapeHtml(routine.assignee)} | ${escapeHtml(routine.taskType || "Routine Maintenance")}</div>
+        <div class="meta">${escapeHtml([routine.asset, routine.area, routine.assignee || "Assign when creating work order", routine.taskType || "Routine Maintenance"].filter(Boolean).join(" | "))}</div>
       </div>
       <span class="pill ${escapeHtml(routine.priority)}">${escapeHtml(routine.priority)}</span>
     </header>
@@ -1080,15 +1133,39 @@ function completedUpdateText(order) {
   return order.draftUpdate || "";
 }
 
+function assigneeEmailsForOrder(order) {
+  return [...new Set([
+    normalizeEmail(order.assigneeEmail),
+    normalizeEmail(order.assignee2Email),
+    ...((Array.isArray(order.assigneeEmails) ? order.assigneeEmails : []).map(normalizeEmail))
+  ].filter(Boolean))];
+}
+
+function assigneeDisplay(order) {
+  return [order.assignee, order.assignee2].map(value => String(value || "").trim()).filter(Boolean).join(" + ") || "Unassigned";
+}
+
+function workerNameForEmail(email, order) {
+  const current = normalizeEmail(email);
+  if (!current) return "";
+  if (normalizeEmail(order.assigneeEmail) === current) return order.assignee || "";
+  if (normalizeEmail(order.assignee2Email) === current) return order.assignee2 || "";
+  const user = (data.settings.users || []).find(item => normalizeEmail(item.email) === current);
+  return user ? user.username : "";
+}
+
 function openOrderDialog(order = null) {
   if (!canManageData()) return;
   document.querySelector("#dialogTitle").textContent = order ? "Edit Work Order" : "New Work Order";
   document.querySelector("#orderId").value = order ? order.id || "" : "";
+  document.querySelector("#sourceRoutineId").value = order ? order.sourceRoutineId || "" : "";
   document.querySelector("#titleInput").value = order ? order.title || "" : "";
   document.querySelector("#assetInput").value = order ? order.asset || "" : "";
   document.querySelector("#areaInput").value = order ? order.area || "" : "";
   document.querySelector("#assigneeInput").value = order ? order.assignee || "" : "";
   document.querySelector("#assigneeEmailInput").value = order ? order.assigneeEmail || "" : "";
+  document.querySelector("#assignee2Input").value = order ? order.assignee2 || "" : "";
+  document.querySelector("#assignee2EmailInput").value = order ? order.assignee2Email || "" : "";
   document.querySelector("#adminEmailInput").value = order ? order.adminEmail || data.settings.userEmail || "" : data.settings.userEmail || "";
   document.querySelector("#taskTypeInput").value = order ? order.taskType || "Breakdown" : "Breakdown";
   document.querySelector("#priorityInput").value = order ? order.priority || "Medium" : "Medium";
@@ -1106,16 +1183,20 @@ async function saveOrder(event) {
   if (!canManageData()) return;
   const id = document.querySelector("#orderId").value || nextOrderId();
   const existing = data.orders.find(order => order.id === id);
-  const previousAssignee = existing ? existing.assignee || "" : "";
+  const previousAssignees = existing ? assigneeEmailsForOrder(existing).join("|") : "";
   applyAssigneeUserMatch();
+  applyAssignee2UserMatch();
   const update = document.querySelector("#updateInput").value.trim();
   const order = {
     id,
+    sourceRoutineId: document.querySelector("#sourceRoutineId").value,
     title: document.querySelector("#titleInput").value.trim(),
     asset: document.querySelector("#assetInput").value.trim(),
     area: document.querySelector("#areaInput").value.trim(),
     assignee: document.querySelector("#assigneeInput").value.trim(),
     assigneeEmail: normalizeEmail(document.querySelector("#assigneeEmailInput").value),
+    assignee2: document.querySelector("#assignee2Input").value.trim(),
+    assignee2Email: normalizeEmail(document.querySelector("#assignee2EmailInput").value),
     adminEmail: normalizeEmail(document.querySelector("#adminEmailInput").value),
     taskType: document.querySelector("#taskTypeInput").value,
     priority: document.querySelector("#priorityInput").value,
@@ -1127,10 +1208,13 @@ async function saveOrder(event) {
     startedAt: existing ? existing.startedAt || "" : "",
     endedAt: existing ? existing.endedAt || "" : "",
     completedAt: existing ? existing.completedAt || "" : "",
+    activeWorkerEmail: existing ? existing.activeWorkerEmail || "" : "",
+    activeWorkerName: existing ? existing.activeWorkerName || "" : "",
     draftUpdate: existing ? existing.draftUpdate || "" : "",
     updates: existing ? existing.updates || [] : [],
     attachment: existing ? existing.attachment || null : null
   };
+  order.assigneeEmails = assigneeEmailsForOrder(order);
   if (update) order.updates.push(update);
   if (existing) {
     Object.assign(existing, order);
@@ -1140,11 +1224,19 @@ async function saveOrder(event) {
   if (!data.assets.some(asset => asset.name === order.asset)) {
     data.assets.push({ name: order.asset, area: order.area, type: "Equipment", lastService: todayOffset(0) });
   }
-  if (!existing || previousAssignee !== order.assignee) {
+  const sourceRoutine = order.sourceRoutineId ? data.routines.find(routine => routine.id === order.sourceRoutineId) : null;
+  if (!existing && sourceRoutine) {
+    sourceRoutine.nextDue = nextRoutineDate(sourceRoutine.nextDue, sourceRoutine.frequencyDays);
+  }
+  if (!existing || previousAssignees !== assigneeEmailsForOrder(order).join("|")) {
     createAssignmentNotification(order);
   }
   saveData();
   closeDialog(els.orderDialog);
+  if (sourceRoutine) {
+    pendingOrderSyncs.set(order.id, "Uploading work order to Google...");
+    setView("orders");
+  }
   render();
   updateSyncStatus("ok", "Saved locally. Uploading work order to Google...");
   syncOrderInBackground(order, "Uploading work order to Google...");
@@ -1246,13 +1338,16 @@ async function generateOrderFromRoutine(id) {
   if (!canManageData()) return;
   const routine = data.routines.find(item => item.id === id);
   if (!routine) return;
-  const order = {
+  openOrderDialog({
     id: nextOrderId(),
+    sourceRoutineId: routine.id,
     title: routine.title,
     asset: routine.asset,
     area: routine.area,
     assignee: routine.assignee,
     assigneeEmail: normalizeEmail(routine.assigneeEmail),
+    assignee2: "",
+    assignee2Email: "",
     adminEmail: data.settings.userEmail || "",
     taskType: routine.taskType || "Routine Maintenance",
     priority: routine.priority,
@@ -1266,15 +1361,7 @@ async function generateOrderFromRoutine(id) {
     completedAt: "",
     updates: [],
     attachment: null
-  };
-  data.orders.unshift(order);
-  routine.nextDue = nextRoutineDate(routine.nextDue, routine.frequencyDays);
-  createAssignmentNotification(order);
-  saveData();
-  setView("orders");
-  render();
-  updateSyncStatus("ok", "Created locally. Sending assignment notification...");
-  syncOrderInBackground(order, "Sending assignment notification...");
+  });
 }
 
 async function handleOrderAction(action, id) {
@@ -1286,8 +1373,10 @@ async function handleOrderAction(action, id) {
   if (action === "start") {
     order.startedAt = now;
     order.status = "In Progress";
-    order.updates.push(`Work started at ${formatDateTime(now)}.`);
-    createStatusNotification(order, `${order.id} was started by ${order.assignee}.`);
+    order.activeWorkerEmail = normalizeEmail(data.settings.userEmail);
+    order.activeWorkerName = workerNameForEmail(order.activeWorkerEmail, order) || order.assignee;
+    order.updates.push(`Work started by ${order.activeWorkerName || order.activeWorkerEmail} at ${formatDateTime(now)}.`);
+    createStatusNotification(order, `${order.id} was started by ${order.activeWorkerName || order.activeWorkerEmail}.`);
   }
   if (action === "end") {
     order.endedAt = now;
@@ -1388,8 +1477,8 @@ function openCompletionReport(order) {
         <tr><th>Asset</th><td>${escapeHtml(order.asset)}</td></tr>
         <tr><th>Area</th><td>${escapeHtml(order.area)}</td></tr>
         <tr><th>Task Type</th><td>${escapeHtml(order.taskType || "")}</td></tr>
-        <tr><th>Assigned To</th><td>${escapeHtml(order.assignee)}</td></tr>
-        <tr><th>Assignee Email</th><td>${escapeHtml(order.assigneeEmail || "")}</td></tr>
+        <tr><th>Assigned To</th><td>${escapeHtml(assigneeDisplay(order))}</td></tr>
+        <tr><th>Assignee Email</th><td>${escapeHtml(assigneeEmailsForOrder(order).join(", "))}</td></tr>
         <tr><th>Admin / Assigner Email</th><td>${escapeHtml(order.adminEmail || "")}</td></tr>
         <tr><th>Due Date</th><td>${escapeHtml(order.due)}</td></tr>
         <tr><th>Start Time</th><td>${escapeHtml(formatDateTime(order.startedAt))}</td></tr>
@@ -1417,7 +1506,7 @@ function createAssignmentNotification(order) {
     recipients: notificationRecipients(order),
     orderId: order.id,
     title: `Assigned: ${order.title}`,
-    message: `${order.id} has been assigned to ${order.assignee}. Due date: ${order.due}.${order.assigneeEmail ? ` Email: ${order.assigneeEmail}.` : ""}`,
+    message: `${order.id} has been assigned to ${assigneeDisplay(order)}. Due date: ${order.due}.${assigneeEmailsForOrder(order).length ? ` Email: ${assigneeEmailsForOrder(order).join(", ")}.` : ""}`,
     createdAt: new Date().toISOString(),
     read: false
   };
@@ -1445,7 +1534,7 @@ function createStatusNotification(order, message) {
 
 function notificationRecipients(order) {
   return [...new Set([
-    normalizeEmail(order.assigneeEmail),
+    ...assigneeEmailsForOrder(order),
     normalizeEmail(order.adminEmail),
     ...((data.settings.workspace && data.settings.workspace.adminEmails) || []).map(normalizeEmail)
   ].filter(Boolean))];
@@ -1467,7 +1556,7 @@ function shouldNotifyAboutOrder(order) {
   const currentEmail = normalizeEmail(data.settings.userEmail);
   if (!currentEmail) return false;
   return canManageData()
-    || normalizeEmail(order.assigneeEmail) === currentEmail
+    || assigneeEmailsForOrder(order).includes(currentEmail)
     || normalizeEmail(order.adminEmail) === currentEmail;
 }
 
@@ -1992,7 +2081,9 @@ function canUseView(view) {
 function canEditOrder(order) {
   if (canManageData()) return true;
   const currentEmail = normalizeEmail(data.settings.userEmail);
-  return Boolean(currentEmail && normalizeEmail(order.assigneeEmail) === currentEmail);
+  if (!currentEmail || !assigneeEmailsForOrder(order).includes(currentEmail)) return false;
+  if (!order.startedAt || !order.activeWorkerEmail) return true;
+  return normalizeEmail(order.activeWorkerEmail) === currentEmail;
 }
 
 function visibleOrders() {
@@ -2004,7 +2095,7 @@ function visibleOrders() {
 
 function isOrderAssignedToEmail(order, email) {
   const currentEmail = normalizeEmail(email);
-  return Boolean(currentEmail && normalizeEmail(order.assigneeEmail) === currentEmail);
+  return Boolean(currentEmail && assigneeEmailsForOrder(order).includes(currentEmail));
 }
 
 function openAssignedOrder(orderId) {
@@ -2087,6 +2178,16 @@ function findUserByUsername(username) {
 function applyAssigneeUserMatch() {
   const nameField = document.querySelector("#assigneeInput");
   const emailField = document.querySelector("#assigneeEmailInput");
+  applyUserMatchToFields(nameField, emailField);
+}
+
+function applyAssignee2UserMatch() {
+  const nameField = document.querySelector("#assignee2Input");
+  const emailField = document.querySelector("#assignee2EmailInput");
+  applyUserMatchToFields(nameField, emailField);
+}
+
+function applyUserMatchToFields(nameField, emailField) {
   if (!nameField || !emailField) return;
   const user = findUserByUsername(nameField.value);
   if (!user) return;
@@ -2210,6 +2311,8 @@ els.statusFilter.addEventListener("change", renderOrders);
 els.priorityFilter.addEventListener("change", renderOrders);
 document.querySelector("#assigneeInput").addEventListener("change", applyAssigneeUserMatch);
 document.querySelector("#assigneeInput").addEventListener("blur", applyAssigneeUserMatch);
+document.querySelector("#assignee2Input").addEventListener("change", applyAssignee2UserMatch);
+document.querySelector("#assignee2Input").addEventListener("blur", applyAssignee2UserMatch);
 document.querySelector("#routineAssigneeInput").addEventListener("change", applyRoutineAssigneeUserMatch);
 document.querySelector("#routineAssigneeInput").addEventListener("blur", applyRoutineAssigneeUserMatch);
 els.exportBtn.addEventListener("click", exportData);

@@ -1,5 +1,5 @@
 {
-  "version": "1.4.4",
-  "build": "20260517c",
-  "notes": "Kept pending routines visible during sync, made checklist/comment edits local until Submit Done, and preserved completed comments."
+  "version": "1.4.5",
+  "build": "20260518a",
+  "notes": "Added optional second assignee, latest-completed sorting, admin routine due reminders, and optional routine assignee defaults."
 }
