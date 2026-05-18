@@ -1,5 +1,5 @@
 {
-  "version": "1.4.5",
-  "build": "20260518a",
-  "notes": "Added optional second assignee, latest-completed sorting, admin routine due reminders, and optional routine assignee defaults."
+  "version": "1.4.6",
+  "build": "20260518b",
+  "notes": "Added delete confirmation and kept deleted work/routine cards visible with a deleting status until Google confirms removal."
 }

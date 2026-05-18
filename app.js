@@ -1,7 +1,7 @@
 const storeKey = "lhMaintenanceData";
 const legacyStoreKey = "maintenanceDeskData";
-const appVersion = "1.4.5";
-const appBuild = "20260518a";
+const appVersion = "1.4.6";
+const appBuild = "20260518b";
 const defaultApiUrl = "https://script.google.com/macros/s/AKfycbyOnhU47l57sR2xh0SgpaSR9Vt_dCYKYTQNmtYO1BH5of-5ILLwU_LUkxCkxtsHOmJw/exec";
 const legacyApiUrls = [
   "https://script.google.com/macros/s/AKfycbzfsye5T03XaH5YVY27i6Hk7T9frOHYtJ4XRPezG5xLhfQonBdWvjrLaMK0we_5mj0/exec"
@@ -396,11 +396,14 @@ function syncOrderInBackground(order, label = "Uploading to Google...") {
 
 function syncAllAdminInBackground(options = {}) {
   const routineIds = options.routineIds || [];
+  const orderIds = options.orderIds || [];
   routineIds.forEach(id => pendingRoutineSyncs.set(id, options.label || "Uploading to Google..."));
+  orderIds.forEach(id => pendingOrderSyncs.set(id, options.label || "Uploading to Google..."));
   pendingAdminSyncs += 1;
   render();
   return syncAllAdmin({ silent: true, data: options.data }).then(ok => {
     routineIds.forEach(id => pendingRoutineSyncs.delete(id));
+    orderIds.forEach(id => pendingOrderSyncs.delete(id));
     return ok;
   }).finally(() => {
     pendingAdminSyncs = Math.max(0, pendingAdminSyncs - 1);
@@ -1245,12 +1248,26 @@ async function saveOrder(event) {
 async function deleteCurrentOrder() {
   if (!canManageData()) return;
   const id = document.querySelector("#orderId").value;
-  data.orders = data.orders.filter(order => order.id !== id);
-  saveData();
+  const order = data.orders.find(item => item.id === id);
+  if (!order) return;
+  const okToDelete = confirm(`Delete work order ${order.id} - ${order.title}?\n\nIt will be removed after Google database confirms the deletion.`);
+  if (!okToDelete) return;
+  const nextData = cloneData(data);
+  nextData.orders = nextData.orders.filter(item => item.id !== id);
+  pendingOrderSyncs.set(id, "Deleting from Google...");
   closeDialog(els.orderDialog);
   render();
-  updateSyncStatus("ok", "Deleted locally. Syncing to Google...");
-  syncAllAdminInBackground();
+  updateSyncStatus("ok", "Deleting work order from Google...");
+  const saved = await syncAllAdmin({ silent: true, data: nextData });
+  pendingOrderSyncs.delete(id);
+  if (saved) {
+    data.orders = data.orders.filter(item => item.id !== id);
+    updateSyncStatus("ok", `Deleted from Google ${formatTimeOnly(new Date())}.`);
+  } else {
+    updateSyncStatus("error", "Delete did not finish. Work order kept on this device.");
+  }
+  saveData();
+  render();
 }
 
 async function saveAsset(event) {
@@ -1326,12 +1343,26 @@ async function saveRoutine(event) {
 async function deleteCurrentRoutine() {
   if (!canManageData()) return;
   const id = document.querySelector("#routineId").value;
-  data.routines = data.routines.filter(routine => routine.id !== id);
-  saveData();
+  const routine = data.routines.find(item => item.id === id);
+  if (!routine) return;
+  const okToDelete = confirm(`Delete routine task ${routine.id} - ${routine.title}?\n\nIt will be removed after Google database confirms the deletion.`);
+  if (!okToDelete) return;
+  const nextData = cloneData(data);
+  nextData.routines = nextData.routines.filter(item => item.id !== id);
+  pendingRoutineSyncs.set(id, "Deleting from Google...");
   closeDialog(els.routineDialog);
   render();
-  updateSyncStatus("ok", "Deleted locally. Syncing to Google...");
-  syncAllAdminInBackground();
+  updateSyncStatus("ok", "Deleting routine task from Google...");
+  const saved = await syncAllAdmin({ silent: true, data: nextData });
+  pendingRoutineSyncs.delete(id);
+  if (saved) {
+    data.routines = data.routines.filter(item => item.id !== id);
+    updateSyncStatus("ok", `Deleted from Google ${formatTimeOnly(new Date())}.`);
+  } else {
+    updateSyncStatus("error", "Delete did not finish. Routine task kept on this device.");
+  }
+  saveData();
+  render();
 }
 
 async function generateOrderFromRoutine(id) {
@@ -2420,6 +2451,7 @@ document.body.addEventListener("click", event => {
 
   const card = event.target.closest(".order-card");
   if (!card) return;
+  if (card.classList.contains("syncing-card")) return;
   const order = data.orders.find(item => item.id === card.dataset.orderId);
   if (order && canManageData()) openOrderDialog(order);
 });
