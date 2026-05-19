@@ -1,7 +1,7 @@
 const storeKey = "lhMaintenanceData";
 const legacyStoreKey = "maintenanceDeskData";
-const appVersion = "1.4.6";
-const appBuild = "20260518b";
+const appVersion = "1.4.7";
+const appBuild = "20260519a";
 const defaultApiUrl = "https://script.google.com/macros/s/AKfycbyOnhU47l57sR2xh0SgpaSR9Vt_dCYKYTQNmtYO1BH5of-5ILLwU_LUkxCkxtsHOmJw/exec";
 const legacyApiUrls = [
   "https://script.google.com/macros/s/AKfycbzfsye5T03XaH5YVY27i6Hk7T9frOHYtJ4XRPezG5xLhfQonBdWvjrLaMK0we_5mj0/exec"
@@ -189,6 +189,8 @@ const els = {
   deleteRoutineBtn: document.querySelector("#deleteRoutineBtn"),
   clearNotificationsBtn: document.querySelector("#clearNotificationsBtn"),
   installAppBtn: document.querySelector("#installAppBtn"),
+  testPushRegistrationBtn: document.querySelector("#testPushRegistrationBtn"),
+  pushDebugOutput: document.querySelector("#pushDebugOutput"),
   roleStatus: document.querySelector("#roleStatus"),
   workspaceForm: document.querySelector("#workspaceForm"),
   resetWorkspaceBtn: document.querySelector("#resetWorkspaceBtn"),
@@ -1598,7 +1600,7 @@ function showBrowserNotification(notification) {
     tag: notification.orderId,
     data: { orderId: notification.orderId, url: `${location.origin}${location.pathname}#orders` },
     icon: "icons/lh-icon-192.png",
-    badge: "icons/lh-badge-96.png"
+    badge: "lh-badge-96.png"
   };
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.ready
@@ -1733,6 +1735,134 @@ async function savePushSubscription(options = {}) {
 
   await postRemote("savePushToken", { subscription: data.settings.pushSubscription });
   if (!options.silent) updateSyncStatus("ok", "Browser push token saved on this device.");
+}
+
+async function testPushRegistration() {
+  const lines = [];
+  const log = (label, value) => {
+    const rendered = value instanceof Error ? `${value.name}: ${value.message}` : String(value);
+    lines.push(`${label}: ${rendered}`);
+    renderPushDebug(lines);
+  };
+
+  if (els.testPushRegistrationBtn) els.testPushRegistrationBtn.disabled = true;
+  try {
+    log("Started", new Date().toLocaleString());
+    log("Location", location.href);
+    log("Standalone mode", isStandaloneMode() ? "yes" : "no");
+    log("Current saved push record", describeSavedPushRecord());
+
+    if (!("Notification" in window)) {
+      log("Notification API", "not supported");
+      return;
+    }
+    log("Notification.permission", Notification.permission);
+    if (Notification.permission === "default") {
+      const permission = await Notification.requestPermission();
+      log("Notification.requestPermission()", permission);
+    }
+    if (Notification.permission !== "granted") {
+      log("Result", "stopped because notification permission is not granted");
+      return;
+    }
+
+    const serviceWorkerSupported = "serviceWorker" in navigator;
+    const pushSupported = "PushManager" in window;
+    log("serviceWorker supported", serviceWorkerSupported ? "yes" : "no");
+    log("PushManager supported", pushSupported ? "yes" : "no");
+    if (!serviceWorkerSupported || !pushSupported) return;
+
+    let registration = await navigator.serviceWorker.getRegistration();
+    log("Existing service worker registration", registration ? "yes" : "no");
+    if (!registration) {
+      registration = await navigator.serviceWorker.register("sw.js");
+      log("navigator.serviceWorker.register()", "ok");
+    }
+    registration = await navigator.serviceWorker.ready;
+    log("Service worker ready", "yes");
+    log("Service worker scope", registration.scope || "(missing)");
+
+    const existingSubscription = await registration.pushManager.getSubscription();
+    log("Existing push subscription", existingSubscription ? safeEndpoint(existingSubscription.endpoint) : "none");
+
+    if (!pushConfig.publicVapidKey) {
+      log("VAPID public key", "missing");
+      return;
+    }
+
+    let subscription;
+    try {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(pushConfig.publicVapidKey)
+      });
+      log("pushManager.subscribe()", "succeeded");
+      log("Subscription endpoint", safeEndpoint(subscription.endpoint));
+    } catch (error) {
+      log("pushManager.subscribe()", "failed");
+      log("Subscribe error", error);
+      return;
+    }
+
+    const subscriptionJson = {
+      provider: "web-push",
+      savedAt: new Date().toISOString(),
+      ...subscription.toJSON()
+    };
+    data.settings.pushSubscription = subscriptionJson;
+    saveData();
+    log("Local push record type", describeSavedPushRecord());
+
+    try {
+      const payload = await postRemote("savePushToken", {
+        provider: "web-push",
+        subscription: subscriptionJson
+      });
+      log("Remote savePushToken", payload ? "succeeded" : "skipped because user email or backend URL is missing");
+    } catch (error) {
+      log("Remote savePushToken", "failed");
+      log("Remote save error", error);
+    }
+  } finally {
+    if (els.testPushRegistrationBtn) els.testPushRegistrationBtn.disabled = false;
+  }
+}
+
+function renderPushDebug(lines) {
+  if (!els.pushDebugOutput) return;
+  els.pushDebugOutput.textContent = lines.join("\n");
+}
+
+function isStandaloneMode() {
+  return Boolean(
+    window.matchMedia && window.matchMedia("(display-mode: standalone)").matches
+  ) || Boolean(window.navigator.standalone);
+}
+
+function describeSavedPushRecord() {
+  const record = data.settings && data.settings.pushSubscription;
+  if (!record) return "none";
+  if (record.provider === "firebase" || record.token) {
+    return `FCM token (${safeToken(record.token)})`;
+  }
+  if (record.endpoint) {
+    return `Web Push subscription (${safeEndpoint(record.endpoint)})`;
+  }
+  if (record.provider) return `${record.provider} record`;
+  return "unknown push record";
+}
+
+function safeToken(token) {
+  const text = String(token || "");
+  if (!text) return "no token";
+  return text.length <= 18 ? text : `${text.slice(0, 10)}...${text.slice(-6)}`;
+}
+
+function safeEndpoint(endpoint) {
+  const text = String(endpoint || "");
+  if (!text) return "no endpoint";
+  if (text.length <= 42) return text;
+  return `${text.slice(0, 32)}...${text.slice(-10)}`;
 }
 
 async function saveFirebaseMessagingToken(options = {}) {
@@ -2352,6 +2482,7 @@ els.printBtn.addEventListener("click", () => window.print());
 els.enableNotifyBtn.addEventListener("click", async () => {
   await enableNotifications();
 });
+if (els.testPushRegistrationBtn) els.testPushRegistrationBtn.addEventListener("click", testPushRegistration);
 els.installAppBtn.addEventListener("click", installApp);
 els.updateAppBtn.addEventListener("click", updateApp);
 els.syncNowBtn.addEventListener("click", syncNow);

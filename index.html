@@ -17,7 +17,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/lh-icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/lh-icon-192.png">
-  <link rel="stylesheet" href="styles.css?v=20260518b">
+  <link rel="stylesheet" href="styles.css?v=20260519a">
 </head>
 <body>
   <div id="startupError" class="startup-error"></div>
@@ -237,6 +237,16 @@
             <span>Google Apps Script must enforce the same admin/user rules for real security.</span>
           </div>
         </div>
+        <div class="push-debug-panel" data-admin-only>
+          <div class="section-head">
+            <div>
+              <h3>Push Notification Debug</h3>
+              <p>Check this device's install, service worker, and push registration state before sending real task notifications.</p>
+            </div>
+            <button type="button" id="testPushRegistrationBtn" class="secondary">Test Push Registration</button>
+          </div>
+          <div id="pushDebugOutput" class="push-debug-output">No push registration test has run on this device.</div>
+        </div>
       </div>
     </section>
   </main>
@@ -391,6 +401,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=20260518b"></script>
+  <script src="app.js?v=20260519a"></script>
 </body>
 </html>

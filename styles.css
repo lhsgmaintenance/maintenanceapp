@@ -767,6 +767,40 @@ tbody tr:hover {
   font-size: 13px;
 }
 
+.push-debug-panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.push-debug-panel .section-head {
+  align-items: flex-start;
+  margin-bottom: 0;
+}
+
+.push-debug-panel p {
+  margin-top: 4px;
+}
+
+.push-debug-output {
+  min-height: 120px;
+  max-height: 360px;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid #cbd8de;
+  border-radius: 8px;
+  background: #101820;
+  color: #eef5f7;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .bar-row {
   display: grid;
   grid-template-columns: 110px 1fr 40px;

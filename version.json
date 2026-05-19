@@ -1,5 +1,5 @@
 {
-  "version": "1.4.6",
-  "build": "20260518b",
-  "notes": "Added delete confirmation and kept deleted work/routine cards visible with a deleting status until Google confirms removal."
+  "version": "1.4.7",
+  "build": "20260519a",
+  "notes": "Added push registration diagnostics and fixed the service worker badge asset path."
 }
