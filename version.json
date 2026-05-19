@@ -1,5 +1,5 @@
 {
-  "version": "1.4.7",
-  "build": "20260519a",
-  "notes": "Added push registration diagnostics and fixed the service worker badge asset path."
+  "version": "1.4.8",
+  "build": "20260519b",
+  "notes": "Preserve iPhone Web Push subscriptions locally and add backend save status diagnostics."
 }

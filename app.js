@@ -1,7 +1,7 @@
 const storeKey = "lhMaintenanceData";
 const legacyStoreKey = "maintenanceDeskData";
-const appVersion = "1.4.7";
-const appBuild = "20260519a";
+const appVersion = "1.4.8";
+const appBuild = "20260519b";
 const defaultApiUrl = "https://script.google.com/macros/s/AKfycbyOnhU47l57sR2xh0SgpaSR9Vt_dCYKYTQNmtYO1BH5of-5ILLwU_LUkxCkxtsHOmJw/exec";
 const legacyApiUrls = [
   "https://script.google.com/macros/s/AKfycbzfsye5T03XaH5YVY27i6Hk7T9frOHYtJ4XRPezG5xLhfQonBdWvjrLaMK0we_5mj0/exec"
@@ -324,6 +324,7 @@ function mergeRemoteData(remote) {
   const localSettings = data.settings || {};
   const localWorkspace = localSettings.workspace || {};
   const localUsers = normalizeUsers(localSettings.users || []);
+  const localPushSubscription = localSettings.pushSubscription;
   const localNotifications = data.notifications || [];
   const localDrafts = captureDraftUpdates();
   const localOrders = data.orders || [];
@@ -345,6 +346,9 @@ function mergeRemoteData(remote) {
   data.settings.username = data.settings.username || localSettings.username || "";
   data.settings.users = mergeUsers(data.settings.users || [], localUsers);
   data.settings.role = getRoleForEmail(data.settings.userEmail, data.settings.workspace);
+  if (!hasSavedPushRecord(data.settings.pushSubscription) && hasSavedPushRecord(localPushSubscription)) {
+    data.settings.pushSubscription = localPushSubscription;
+  }
   restoreDraftUpdates(localDrafts);
 }
 
@@ -1730,10 +1734,8 @@ async function savePushSubscription(options = {}) {
     userVisibleOnly: true,
     applicationServerKey: urlBase64ToUint8Array(pushConfig.publicVapidKey)
   });
-  data.settings.pushSubscription = subscription.toJSON();
-  saveData();
-
-  await postRemote("savePushToken", { subscription: data.settings.pushSubscription });
+  const record = createWebPushRecord(subscription);
+  await savePushRecord(record);
   if (!options.silent) updateSyncStatus("ok", "Browser push token saved on this device.");
 }
 
@@ -1804,24 +1806,22 @@ async function testPushRegistration() {
       return;
     }
 
-    const subscriptionJson = {
-      provider: "web-push",
-      savedAt: new Date().toISOString(),
-      ...subscription.toJSON()
-    };
-    data.settings.pushSubscription = subscriptionJson;
-    saveData();
-    log("Local push record type", describeSavedPushRecord());
+    const record = createWebPushRecord(subscription);
+    log("Subscription endpoint created", record.endpoint ? "yes" : "no");
+    log("Subscription keys.p256dh created", record.keys && record.keys.p256dh ? "yes" : "no");
+    log("Subscription keys.auth created", record.keys && record.keys.auth ? "yes" : "no");
 
     try {
-      const payload = await postRemote("savePushToken", {
-        provider: "web-push",
-        subscription: subscriptionJson
-      });
-      log("Remote savePushToken", payload ? "succeeded" : "skipped because user email or backend URL is missing");
+      const result = await savePushRecord(record, { throwOnError: false });
+      log("Local push record type after save", describeSavedPushRecord());
+      log("Backend save attempted", result.attempted ? "yes" : "no");
+      log("Backend response status", result.status || "not available");
+      log("Backend response body", result.body || "(empty)");
+      log("Saved push record found after save", hasSavedPushRecord(data.settings.pushSubscription) ? "yes" : "no");
     } catch (error) {
-      log("Remote savePushToken", "failed");
-      log("Remote save error", error);
+      log("Backend save attempted", "yes");
+      log("Backend save error", error);
+      log("Saved push record found after save", hasSavedPushRecord(data.settings.pushSubscription) ? "yes" : "no");
     }
   } finally {
     if (els.testPushRegistrationBtn) els.testPushRegistrationBtn.disabled = false;
@@ -1850,6 +1850,120 @@ function describeSavedPushRecord() {
   }
   if (record.provider) return `${record.provider} record`;
   return "unknown push record";
+}
+
+function hasSavedPushRecord(record) {
+  return Boolean(record && (record.token || record.endpoint || (record.keys && record.keys.p256dh && record.keys.auth)));
+}
+
+function createWebPushRecord(subscription) {
+  const json = subscription.toJSON();
+  const previous = data.settings && data.settings.pushSubscription && data.settings.pushSubscription.endpoint === json.endpoint
+    ? data.settings.pushSubscription
+    : {};
+  const now = new Date().toISOString();
+  return {
+    provider: "web-push",
+    userEmail: normalizeEmail(data.settings.userEmail),
+    userId: pushUserId(),
+    username: data.settings.username || "",
+    deviceType: detectDeviceType(),
+    endpoint: json.endpoint || "",
+    expirationTime: json.expirationTime || null,
+    keys: {
+      p256dh: json.keys && json.keys.p256dh ? json.keys.p256dh : "",
+      auth: json.keys && json.keys.auth ? json.keys.auth : ""
+    },
+    createdAt: previous.createdAt || now,
+    updatedAt: now,
+    savedAt: now
+  };
+}
+
+function createFirebasePushRecord(token) {
+  const previous = data.settings && data.settings.pushSubscription && data.settings.pushSubscription.token === token
+    ? data.settings.pushSubscription
+    : {};
+  const now = new Date().toISOString();
+  return {
+    provider: "firebase",
+    token,
+    userEmail: normalizeEmail(data.settings.userEmail),
+    userId: pushUserId(),
+    username: data.settings.username || "",
+    deviceType: detectDeviceType(),
+    createdAt: previous.createdAt || now,
+    updatedAt: now,
+    savedAt: now
+  };
+}
+
+async function savePushRecord(record, options = {}) {
+  data.settings.pushSubscription = record;
+  saveData();
+
+  const result = {
+    attempted: false,
+    ok: false,
+    status: "not attempted",
+    body: "",
+    payload: null
+  };
+  const url = backendUrl();
+  const userEmail = normalizeEmail(data.settings.userEmail);
+  if (!url || !userEmail) return result;
+
+  result.attempted = true;
+  const response = await fetch(url, {
+    method: "POST",
+    body: JSON.stringify({
+      action: "savePushToken",
+      actorEmail: userEmail,
+      userEmail,
+      userId: record.userId || userEmail,
+      username: record.username || "",
+      deviceType: record.deviceType || detectDeviceType(),
+      provider: record.provider || "",
+      token: record.token || "",
+      endpoint: record.endpoint || "",
+      keys: record.keys || null,
+      subscription: record,
+      pushSubscription: record,
+      createdAt: record.createdAt || "",
+      updatedAt: record.updatedAt || ""
+    })
+  });
+  result.status = `${response.status} ${response.statusText}`.trim();
+  result.body = await response.text();
+  try {
+    result.payload = result.body ? JSON.parse(result.body) : null;
+  } catch {
+    result.payload = null;
+  }
+  result.ok = response.ok && (!result.payload || result.payload.ok !== false);
+  if (result.payload && result.payload.data) {
+    mergeRemoteData(result.payload.data);
+  }
+  if (!hasSavedPushRecord(data.settings.pushSubscription)) {
+    data.settings.pushSubscription = record;
+  }
+  saveData();
+  if (!result.ok && options.throwOnError !== false) {
+    throw new Error(`Backend savePushToken failed: ${result.status} ${result.body || ""}`.trim());
+  }
+  return result;
+}
+
+function pushUserId() {
+  return normalizeEmail(data.settings.userEmail) || data.settings.username || "unknown-user";
+}
+
+function detectDeviceType() {
+  const ua = navigator.userAgent || "";
+  const standalone = isStandaloneMode() ? "standalone" : "browser";
+  if (/iPad|iPhone|iPod/.test(ua)) return `ios-pwa-${standalone}`;
+  if (/Android/.test(ua)) return `android-pwa-${standalone}`;
+  return `web-pwa-${standalone}`;
 }
 
 function safeToken(token) {
@@ -1901,17 +2015,8 @@ async function saveFirebaseMessagingToken(options = {}) {
     if (!options.silent) updateSyncStatus("error", "Firebase did not return a phone alert token.");
     return false;
   }
-  data.settings.pushSubscription = {
-    provider: "firebase",
-    token,
-    savedAt: new Date().toISOString()
-  };
-  saveData();
-  await postRemote("savePushToken", {
-    provider: "firebase",
-    token,
-    subscription: data.settings.pushSubscription
-  });
+  const record = createFirebasePushRecord(token);
+  await savePushRecord(record);
   if (!options.silent) updateSyncStatus("ok", `Firebase token saved ${formatTimeOnly(new Date())}.`);
   return true;
 }
