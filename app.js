@@ -201,6 +201,10 @@ const els = {
   syncNowBtn: document.querySelector("#syncNowBtn"),
   languageSelect: document.querySelector("#languageSelect"),
   syncStatus: document.querySelector("#syncStatus"),
+  mobileViewButtons: document.querySelectorAll(".mobile-view-btn"),
+  mobileMoreBtn: document.querySelector("#mobileMoreBtn"),
+  mobileMorePanel: document.querySelector("#mobileMorePanel"),
+  mobileMoreCloseBtn: document.querySelector("#mobileMoreCloseBtn"),
   confirmDialog: document.querySelector("#confirmDialog"),
   confirmTitle: document.querySelector("#confirmTitle"),
   confirmMessage: document.querySelector("#confirmMessage"),
@@ -746,6 +750,26 @@ function applyLanguage() {
   els.navButtons.forEach(btn => {
     if (translations.en[btn.dataset.view]) btn.textContent = t(btn.dataset.view);
   });
+  els.mobileViewButtons.forEach(btn => {
+    const shortLabels = {
+      dashboard: "Dashboard",
+      orders: "Work",
+      routines: "Routine",
+      notifications: "Notifications",
+      calendar: "Calendar",
+      team: "Team",
+      assets: "Assets",
+      reports: "Reports",
+      live: "Admin Setup"
+    };
+    const label = shortLabels[btn.dataset.view] || t(btn.dataset.view);
+    const labelEl = btn.querySelector(".mobile-tab-label");
+    if (labelEl) {
+      labelEl.textContent = label;
+    } else {
+      btn.textContent = label;
+    }
+  });
   if (els.syncNowBtn) els.syncNowBtn.textContent = t("syncNow");
   if (els.profileBtn && !data.settings.userEmail) els.profileBtn.textContent = t("userEmail");
   if (els.enableNotifyBtn) els.enableNotifyBtn.textContent = t("enableAlerts");
@@ -758,10 +782,25 @@ function setView(view) {
   activeView = view;
   els.viewTitle.textContent = t(view);
   els.navButtons.forEach(btn => btn.classList.toggle("active", btn.dataset.view === view));
+  updateMobileNavigation(view);
   els.views.forEach(viewEl => viewEl.classList.toggle("active", viewEl.id === `${view}View`));
   if (["dashboard", "orders", "notifications"].includes(view)) {
     refreshRemoteData();
   }
+}
+
+function updateMobileNavigation(view) {
+  const moreViews = ["notifications", "calendar", "team", "assets", "reports", "live"];
+  els.mobileViewButtons.forEach(btn => btn.classList.toggle("active", btn.dataset.view === view));
+  if (els.mobileMoreBtn) {
+    els.mobileMoreBtn.classList.toggle("active", moreViews.includes(view));
+  }
+}
+
+function setMobileMoreOpen(open) {
+  if (!els.mobileMorePanel || !els.mobileMoreBtn) return;
+  els.mobileMorePanel.hidden = !open;
+  els.mobileMoreBtn.setAttribute("aria-expanded", open ? "true" : "false");
 }
 
 function renderDashboard() {
@@ -2624,6 +2663,16 @@ function resetWorkspace() {
 }
 
 els.navButtons.forEach(btn => btn.addEventListener("click", () => setView(btn.dataset.view)));
+els.mobileViewButtons.forEach(btn => btn.addEventListener("click", () => {
+  setView(btn.dataset.view);
+  setMobileMoreOpen(false);
+}));
+if (els.mobileMoreBtn) {
+  els.mobileMoreBtn.addEventListener("click", () => {
+    setMobileMoreOpen(els.mobileMorePanel ? els.mobileMorePanel.hidden : false);
+  });
+}
+if (els.mobileMoreCloseBtn) els.mobileMoreCloseBtn.addEventListener("click", () => setMobileMoreOpen(false));
 els.newOrderBtn.addEventListener("click", () => openOrderDialog());
 els.profileBtn.addEventListener("click", openProfileDialog);
 els.closeProfileBtn.addEventListener("click", () => closeDialog(els.profileDialog));
@@ -2680,6 +2729,11 @@ els.clearNotificationsBtn.addEventListener("click", () => {
   renderNotifications();
 });
 document.body.addEventListener("click", event => {
+  if (els.mobileMorePanel && !els.mobileMorePanel.hidden) {
+    const clickedMobileNav = event.target.closest(".mobile-app-nav");
+    if (!clickedMobileNav) setMobileMoreOpen(false);
+  }
+
   if (event.target.closest(".checklist, .completion-note, .attachment-link, .attachment-control")) {
     event.stopPropagation();
     return;

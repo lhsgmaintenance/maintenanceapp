@@ -40,3 +40,10 @@ Every Codex change should add a short dated entry to this file.
 - Files changed: `styles.css`, `index.html`, `DEVELOPMENT_LOG.md`.
 - Test result: Browser smoke test passed for New Work Order and New Routine at 1280x720 and 390x844. Both dialogs stayed within the viewport, used internal form scrolling, kept sticky header/footer visible, kept submit buttons reachable, locked page-behind scrolling, and produced no browser console errors.
 - Next step: Continue UI testing once task and routine creation dialogs are usable.
+
+## 2026-05-20 - Mobile Navigation Refinement
+
+- Task: Replaced the tall mobile sidebar navigation with a compact bottom app navigation and More panel for secondary/admin views.
+- Files changed: `index.html`, `styles.css`, `app.js`, `DEVELOPMENT_LOG.md`.
+- Test result: `node --check app.js` passed. Browser smoke test at 390x844 confirmed compact mobile nav, Dashboard/Work/Routine/Admin navigation, More panel behavior, no visible nav text below 13px, and New Work Order/New Routine modals still scroll with reachable buttons. Desktop 1280x720 kept the sidebar navigation. Work order and routine creation were smoke-tested through the existing forms. No browser console errors were reported.
+- Next step: Continue mobile UI testing after confirming navigation, creation dialogs, and PWA files remain stable.

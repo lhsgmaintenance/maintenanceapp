@@ -17,7 +17,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/lh-icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/lh-icon-192.png">
-  <link rel="stylesheet" href="styles.css?v=20260520-modal">
+  <link rel="stylesheet" href="styles.css?v=20260520-mobile-nav">
 </head>
 <body>
   <div id="startupError" class="startup-error"></div>
@@ -251,6 +251,41 @@
     </section>
   </main>
 
+  <nav class="mobile-app-nav" aria-label="Mobile navigation">
+    <div id="mobileMorePanel" class="mobile-more-panel" hidden>
+      <div class="mobile-more-head">
+        <span>More</span>
+        <button type="button" id="mobileMoreCloseBtn" class="icon-btn" aria-label="Close more menu">x</button>
+      </div>
+      <div class="mobile-more-grid">
+        <button type="button" class="mobile-more-link mobile-view-btn" data-view="notifications">Notifications</button>
+        <button type="button" class="mobile-more-link mobile-view-btn" data-view="calendar" data-admin-only>Calendar</button>
+        <button type="button" class="mobile-more-link mobile-view-btn" data-view="team" data-admin-only>Team</button>
+        <button type="button" class="mobile-more-link mobile-view-btn" data-view="assets" data-admin-only>Assets</button>
+        <button type="button" class="mobile-more-link mobile-view-btn" data-view="reports" data-admin-only>Reports</button>
+        <button type="button" class="mobile-more-link mobile-view-btn" data-view="live" data-admin-only>Admin Setup</button>
+      </div>
+    </div>
+    <div class="mobile-nav-bar">
+      <button type="button" class="mobile-tab mobile-view-btn active" data-view="dashboard">
+        <span class="mobile-tab-mark" aria-hidden="true">D</span>
+        <span class="mobile-tab-label">Dashboard</span>
+      </button>
+      <button type="button" class="mobile-tab mobile-view-btn" data-view="orders">
+        <span class="mobile-tab-mark" aria-hidden="true">W</span>
+        <span class="mobile-tab-label">Work</span>
+      </button>
+      <button type="button" class="mobile-tab mobile-view-btn" data-view="routines">
+        <span class="mobile-tab-mark" aria-hidden="true">R</span>
+        <span class="mobile-tab-label">Routine</span>
+      </button>
+      <button type="button" id="mobileMoreBtn" class="mobile-tab mobile-more-toggle" aria-expanded="false" aria-controls="mobileMorePanel">
+        <span class="mobile-tab-mark" aria-hidden="true">+</span>
+        <span>More</span>
+      </button>
+    </div>
+  </nav>
+
   <dialog id="orderDialog">
     <form id="orderForm" method="dialog">
       <div class="dialog-head">
@@ -425,6 +460,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=20260519b"></script>
+  <script src="app.js?v=20260520-mobile-nav"></script>
 </body>
 </html>
