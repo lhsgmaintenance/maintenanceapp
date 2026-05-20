@@ -33,3 +33,10 @@ Every Codex change should add a short dated entry to this file.
 - Files changed: `AGENTS.md`, `TESTING_CHECKLIST.md`, `DEVELOPMENT_LOG.md`.
 - Test result: Documentation-only change; app logic was not modified.
 - Next step: Use the documented `npx` static server command for future local testing.
+
+## 2026-05-20 - Modal Viewport Fix
+
+- Task: Fixed tall modal layout so New Work Order and New Routine forms fit within the viewport and keep submit buttons reachable.
+- Files changed: `styles.css`, `index.html`, `DEVELOPMENT_LOG.md`.
+- Test result: Browser smoke test passed for New Work Order and New Routine at 1280x720 and 390x844. Both dialogs stayed within the viewport, used internal form scrolling, kept sticky header/footer visible, kept submit buttons reachable, locked page-behind scrolling, and produced no browser console errors.
+- Next step: Continue UI testing once task and routine creation dialogs are usable.

@@ -926,6 +926,8 @@ tbody tr:hover {
 
 dialog {
   width: min(780px, calc(100vw - 28px));
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
   padding: 0;
   overflow: hidden;
   opacity: 0;
@@ -943,19 +945,41 @@ dialog::backdrop {
 }
 
 dialog[open] {
+  display: flex;
+  flex-direction: column;
   opacity: 1;
   transform: translateY(0) scale(1);
+}
+
+body:has(dialog[open]) {
+  overflow: hidden;
 }
 
 form {
   padding: 18px;
 }
 
+dialog > form {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  max-height: inherit;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+}
+
 .dialog-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  margin: -18px -18px 16px;
+  padding: 18px 18px 12px;
+  background: linear-gradient(180deg, var(--panel) 78%, rgba(255, 255, 255, 0));
 }
 
 .form-grid {
@@ -1003,10 +1027,17 @@ label input[type="file"] {
 }
 
 .dialog-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
   display: grid;
   grid-template-columns: auto 1fr auto auto;
   gap: 10px;
-  margin-top: 18px;
+  margin: 18px -18px -18px;
+  padding: 12px 18px calc(18px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 -10px 24px rgba(18, 35, 41, 0.08);
 }
 
 .empty {
@@ -1166,6 +1197,14 @@ label input[type="file"] {
 }
 
 @media (max-width: 520px) {
+  dialog {
+    width: calc(100vw - 16px);
+    max-height: calc(100vh - 16px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    max-height: calc(100dvh - 16px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    margin-top: calc(8px + env(safe-area-inset-top, 0px));
+    margin-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  }
+
   .brand h1 {
     font-size: 16px;
   }
