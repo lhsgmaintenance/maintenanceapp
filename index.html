@@ -401,6 +401,30 @@
     </form>
   </dialog>
 
+  <dialog id="confirmDialog" class="confirm-dialog">
+    <form id="confirmForm" method="dialog">
+      <div class="dialog-head">
+        <div class="confirm-icon" aria-hidden="true">!</div>
+        <button type="button" class="icon-btn" id="cancelConfirmBtn" aria-label="Close">x</button>
+      </div>
+      <div class="confirm-copy">
+        <h3 id="confirmTitle">Confirm action</h3>
+        <p id="confirmMessage">Please confirm this action.</p>
+      </div>
+      <div id="confirmTarget" class="confirm-target"></div>
+      <div class="confirm-steps" aria-label="Confirmation steps">
+        <div class="confirm-step">Check the selected task.</div>
+        <div class="confirm-step danger-step">Confirm the delete request.</div>
+      </div>
+      <div class="dialog-actions">
+        <span></span>
+        <span></span>
+        <button type="button" class="secondary" id="backConfirmBtn">Cancel</button>
+        <button type="button" class="danger" id="acceptConfirmBtn">Confirm Delete</button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="app.js?v=20260519b"></script>
 </body>
 </html>

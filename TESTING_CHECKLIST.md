@@ -2,6 +2,25 @@
 
 Use this checklist after changes, especially before committing and pushing.
 
+## Local Static Server
+
+- [ ] Confirm no `package.json` or build system was added.
+- [ ] Do not run `npm install`.
+- [ ] Do not run `npm run dev`.
+- [ ] Start the preferred static server from the repository root:
+
+```powershell
+npx http-server . -p 8000 -c-1
+```
+
+- [ ] If needed, use the alternative static server:
+
+```powershell
+npx serve . -l 8000
+```
+
+- [ ] Open `http://localhost:8000`.
+
 ## PWA Install
 
 - [ ] iPhone: open the app in Safari.

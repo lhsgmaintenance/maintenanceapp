@@ -200,7 +200,14 @@ const els = {
   updateAppBtn: document.querySelector("#updateAppBtn"),
   syncNowBtn: document.querySelector("#syncNowBtn"),
   languageSelect: document.querySelector("#languageSelect"),
-  syncStatus: document.querySelector("#syncStatus")
+  syncStatus: document.querySelector("#syncStatus"),
+  confirmDialog: document.querySelector("#confirmDialog"),
+  confirmTitle: document.querySelector("#confirmTitle"),
+  confirmMessage: document.querySelector("#confirmMessage"),
+  confirmTarget: document.querySelector("#confirmTarget"),
+  acceptConfirmBtn: document.querySelector("#acceptConfirmBtn"),
+  backConfirmBtn: document.querySelector("#backConfirmBtn"),
+  cancelConfirmBtn: document.querySelector("#cancelConfirmBtn")
 };
 
 function todayOffset(days) {
@@ -1256,7 +1263,12 @@ async function deleteCurrentOrder() {
   const id = document.querySelector("#orderId").value;
   const order = data.orders.find(item => item.id === id);
   if (!order) return;
-  const okToDelete = confirm(`Delete work order ${order.id} - ${order.title}?\n\nIt will be removed after Google database confirms the deletion.`);
+  const okToDelete = await confirmDestructiveAction({
+    title: "Delete work order?",
+    message: "This task will be removed after the Google database confirms the deletion.",
+    target: `${order.id} - ${order.title}`,
+    actionText: "Confirm Delete"
+  });
   if (!okToDelete) return;
   const nextData = cloneData(data);
   nextData.orders = nextData.orders.filter(item => item.id !== id);
@@ -1351,7 +1363,12 @@ async function deleteCurrentRoutine() {
   const id = document.querySelector("#routineId").value;
   const routine = data.routines.find(item => item.id === id);
   if (!routine) return;
-  const okToDelete = confirm(`Delete routine task ${routine.id} - ${routine.title}?\n\nIt will be removed after Google database confirms the deletion.`);
+  const okToDelete = await confirmDestructiveAction({
+    title: "Delete routine task?",
+    message: "This routine will be removed after the Google database confirms the deletion.",
+    target: `${routine.id} - ${routine.title}`,
+    actionText: "Confirm Delete"
+  });
   if (!okToDelete) return;
   const nextData = cloneData(data);
   nextData.routines = nextData.routines.filter(item => item.id !== id);
@@ -2233,6 +2250,50 @@ function closeDialog(dialog) {
   dialog.removeAttribute("open");
 }
 
+function confirmDestructiveAction(options) {
+  if (!els.confirmDialog) {
+    return Promise.resolve(confirm(`${options.title}\n\n${options.target}\n\n${options.message}`));
+  }
+  els.confirmTitle.textContent = options.title || "Confirm delete?";
+  els.confirmMessage.textContent = options.message || "Please confirm this delete request.";
+  els.confirmTarget.textContent = options.target || "Selected item";
+  els.acceptConfirmBtn.textContent = options.actionText || "Confirm Delete";
+
+  return new Promise(resolve => {
+    let settled = false;
+    const finish = value => {
+      if (settled) return;
+      settled = true;
+      els.acceptConfirmBtn.removeEventListener("click", accept);
+      els.backConfirmBtn.removeEventListener("click", cancel);
+      els.cancelConfirmBtn.removeEventListener("click", cancel);
+      els.confirmDialog.removeEventListener("cancel", cancel);
+      els.confirmDialog.removeEventListener("close", closeHandler);
+      closeDialog(els.confirmDialog);
+      resolve(value);
+    };
+    const accept = () => finish(true);
+    const cancel = event => {
+      if (event) event.preventDefault();
+      finish(false);
+    };
+    const closeHandler = () => finish(false);
+
+    els.acceptConfirmBtn.addEventListener("click", accept);
+    els.backConfirmBtn.addEventListener("click", cancel);
+    els.cancelConfirmBtn.addEventListener("click", cancel);
+    els.confirmDialog.addEventListener("cancel", cancel);
+    els.confirmDialog.addEventListener("close", closeHandler);
+    openDialog(els.confirmDialog);
+  });
+}
+
+function highlightSelectedCard(card) {
+  if (!card) return;
+  document.querySelectorAll(".selected-card").forEach(item => item.classList.remove("selected-card"));
+  card.classList.add("selected-card");
+}
+
 function readAttachment(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -2646,6 +2707,7 @@ document.body.addEventListener("click", event => {
   const orderShortcut = event.target.closest(".order-shortcut");
   if (orderShortcut) {
     event.stopPropagation();
+    highlightSelectedCard(orderShortcut.closest(".order-card"));
     openAssignedOrder(orderShortcut.dataset.orderId);
     return;
   }
@@ -2668,6 +2730,7 @@ document.body.addEventListener("click", event => {
   const routineCardEl = event.target.closest(".routine-card");
   if (routineCardEl) {
     if (!canManageData()) return;
+    highlightSelectedCard(routineCardEl);
     const routine = data.routines.find(item => item.id === routineCardEl.dataset.routineId);
     if (routine) openRoutineDialog(routine);
     return;
@@ -2688,6 +2751,7 @@ document.body.addEventListener("click", event => {
   const card = event.target.closest(".order-card");
   if (!card) return;
   if (card.classList.contains("syncing-card")) return;
+  highlightSelectedCard(card);
   const order = data.orders.find(item => item.id === card.dataset.orderId);
   if (order && canManageData()) openOrderDialog(order);
 });

@@ -18,15 +18,22 @@ This project is the LHSG Maintenance App, a static HTML/CSS/JavaScript progressi
 - Do not run `npm run dev`.
 - Do not add npm dependencies or generated package files unless explicitly approved.
 - Use a simple static server for local testing.
+- Do not use `python -m http.server`; the owner's Windows PC does not have Python installed.
 - Avoid broad rewrites of `app.js`, `styles.css`, `sw.js`, or service worker behavior unless the task requires it.
 - Be careful with PWA behavior, caching, push subscriptions, local storage, and Firebase/admin flows.
 
 ## Local Testing
 
-Use a static server from the repository root, for example:
+Use this preferred static server command from the repository root:
 
 ```powershell
-python -m http.server 8000
+npx http-server . -p 8000 -c-1
+```
+
+Alternative:
+
+```powershell
+npx serve . -l 8000
 ```
 
 Then open:
