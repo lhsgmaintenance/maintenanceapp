@@ -47,3 +47,10 @@ Every Codex change should add a short dated entry to this file.
 - Files changed: `index.html`, `styles.css`, `app.js`, `DEVELOPMENT_LOG.md`.
 - Test result: `node --check app.js` passed. Browser smoke test at 390x844 confirmed compact mobile nav, Dashboard/Work/Routine/Admin navigation, More panel behavior, no visible nav text below 13px, and New Work Order/New Routine modals still scroll with reachable buttons. Desktop 1280x720 kept the sidebar navigation. Work order and routine creation were smoke-tested through the existing forms. No browser console errors were reported.
 - Next step: Continue mobile UI testing after confirming navigation, creation dialogs, and PWA files remain stable.
+
+## 2026-06-05 - Routine Checklist Carryover Fix
+
+- Task: Fixed routine-generated work orders so checklist items from the source routine are preserved when the prefilled work order form is saved.
+- Files changed: `app.js`, `DEVELOPMENT_LOG.md`.
+- Test result: `node --check app.js` passed. Manual browser testing still needed for routine creation, generated work order checklist display, unchecked defaults, details-only routines, existing work orders, and console errors.
+- Next step: Manually test routine checklist creation, today's work order generation, unchecked checklist defaults, details-only routines, and old work order rendering before committing.

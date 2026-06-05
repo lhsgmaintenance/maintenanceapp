@@ -250,11 +250,7 @@ function normalizeData(loaded) {
     order.endedAt = order.endedAt || "";
     order.completedAt = order.completedAt || "";
     order.draftUpdate = order.draftUpdate || "";
-    order.checklist = order.checklist || [];
-    order.checklist = order.checklist.map(item => ({
-      text: typeof item === "string" ? item : item.text,
-      status: item.status || (item.checked ? "ok" : "")
-    }));
+    order.checklist = normalizeOrderChecklist(order.checklist);
     order.updates = order.updates || [];
     order.assignee = order.assignee || "";
     order.assignee2 = order.assignee2 || "";
@@ -280,9 +276,7 @@ function normalizeData(loaded) {
     routine.taskType = routine.taskType || "Routine Maintenance";
     routine.assignee = routine.assignee || "";
     routine.assigneeEmail = normalizeEmail(routine.assigneeEmail);
-    routine.checklist = routine.checklist || (routine.details
-      ? routine.details.split(",").map(item => item.trim()).filter(Boolean)
-      : []);
+    routine.checklist = normalizeRoutineChecklist(routine.checklist, routine.details);
   });
   return loaded;
 }
@@ -1238,13 +1232,15 @@ async function saveOrder(event) {
   if (!canManageData()) return;
   const id = document.querySelector("#orderId").value || nextOrderId();
   const existing = data.orders.find(order => order.id === id);
+  const sourceRoutineId = document.querySelector("#sourceRoutineId").value;
+  const sourceRoutine = sourceRoutineId ? data.routines.find(routine => routine.id === sourceRoutineId) : null;
   const previousAssignees = existing ? assigneeEmailsForOrder(existing).join("|") : "";
   applyAssigneeUserMatch();
   applyAssignee2UserMatch();
   const update = document.querySelector("#updateInput").value.trim();
   const order = {
     id,
-    sourceRoutineId: document.querySelector("#sourceRoutineId").value,
+    sourceRoutineId,
     title: document.querySelector("#titleInput").value.trim(),
     asset: document.querySelector("#assetInput").value.trim(),
     area: document.querySelector("#areaInput").value.trim(),
@@ -1259,7 +1255,7 @@ async function saveOrder(event) {
     due: document.querySelector("#dueInput").value,
     hours: Number(document.querySelector("#hoursInput").value),
     details: document.querySelector("#detailsInput").value.trim(),
-    checklist: existing ? existing.checklist || [] : [],
+    checklist: existing ? normalizeOrderChecklist(existing.checklist) : routineChecklistForOrder(sourceRoutine),
     startedAt: existing ? existing.startedAt || "" : "",
     endedAt: existing ? existing.endedAt || "" : "",
     completedAt: existing ? existing.completedAt || "" : "",
@@ -1279,7 +1275,6 @@ async function saveOrder(event) {
   if (!data.assets.some(asset => asset.name === order.asset)) {
     data.assets.push({ name: order.asset, area: order.area, type: "Equipment", lastService: todayOffset(0) });
   }
-  const sourceRoutine = order.sourceRoutineId ? data.routines.find(routine => routine.id === order.sourceRoutineId) : null;
   if (!existing && sourceRoutine) {
     sourceRoutine.nextDue = nextRoutineDate(sourceRoutine.nextDue, sourceRoutine.frequencyDays);
   }
@@ -2196,6 +2191,55 @@ function parseChecklist(value) {
     .split(/\r?\n/)
     .map(item => item.trim())
     .filter(Boolean);
+}
+
+function parseStoredChecklist(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== "string") return [];
+  const text = value.trim();
+  if (!text) return [];
+  if (text.startsWith("[") && text.endsWith("]")) {
+    try {
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+      return [];
+    }
+  }
+  return text
+    .split(/\r?\n|,/)
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
+function normalizeRoutineChecklist(checklist, details = "") {
+  const items = parseStoredChecklist(checklist)
+    .map(item => typeof item === "string" ? item : item && item.text)
+    .map(item => String(item || "").trim())
+    .filter(Boolean);
+  if (items.length) return items;
+  if (Array.isArray(checklist) || typeof checklist === "string") return [];
+  return parseStoredChecklist(details);
+}
+
+function normalizeOrderChecklist(checklist) {
+  return parseStoredChecklist(checklist)
+    .map(item => {
+      if (typeof item === "string") {
+        return { text: item.trim(), status: "" };
+      }
+      return {
+        text: String(item && item.text || "").trim(),
+        status: item && item.status ? item.status : item && item.checked ? "ok" : ""
+      };
+    })
+    .filter(item => item.text);
+}
+
+function routineChecklistForOrder(routine) {
+  if (!routine) return [];
+  return normalizeRoutineChecklist(routine.checklist, "")
+    .map(text => ({ text, status: "" }));
 }
 
 function formatDateTime(value) {
