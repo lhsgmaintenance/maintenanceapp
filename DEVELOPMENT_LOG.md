@@ -54,3 +54,11 @@ Every Codex change should add a short dated entry to this file.
 - Files changed: `app.js`, `DEVELOPMENT_LOG.md`.
 - Test result: `node --check app.js` passed. Manual browser testing still needed for routine creation, generated work order checklist display, unchecked defaults, details-only routines, existing work orders, and console errors.
 - Next step: Manually test routine checklist creation, today's work order generation, unchecked checklist defaults, details-only routines, and old work order rendering before committing.
+
+## 2026-06-05 - Checklist Assignee Fix
+
+- Task: Fixed the changed-assignee path for routine-generated work orders so changing the assignee only changes assignee fields and does not drop the source routine checklist.
+- Issue found: routine-to-work-order mapping depended on a narrow `routine.checklist` shape; changed-assignee saves could rebuild the new work order payload without a resilient checklist fallback.
+- Files changed: `app.js`, `index.html`, `sw.js`, `version.json`, `DEVELOPMENT_LOG.md`.
+- Test result: `node --check app.js` passed. Automated checks confirmed syntax only; manual browser test cases for user A, user B, user C, assignee correctness, duplicate prevention, old task rendering, and console errors still need to be completed against local/live data.
+- Next step: Run `npx http-server . -p 8000 -c-1`, test routine-generated work orders with original and changed assignees, then commit and push after confirming on devices.

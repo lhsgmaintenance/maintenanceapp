@@ -1,7 +1,7 @@
 const storeKey = "lhMaintenanceData";
 const legacyStoreKey = "maintenanceDeskData";
-const appVersion = "1.4.8";
-const appBuild = "20260519b";
+const appVersion = "2026.06.05-checklist-assignee-fix-1";
+const appBuild = "20260605a";
 const defaultApiUrl = "https://script.google.com/macros/s/AKfycbyOnhU47l57sR2xh0SgpaSR9Vt_dCYKYTQNmtYO1BH5of-5ILLwU_LUkxCkxtsHOmJw/exec";
 const legacyApiUrls = [
   "https://script.google.com/macros/s/AKfycbzfsye5T03XaH5YVY27i6Hk7T9frOHYtJ4XRPezG5xLhfQonBdWvjrLaMK0we_5mj0/exec"
@@ -153,6 +153,7 @@ const pendingOrderSyncs = new Map();
 const pendingRoutineSyncs = new Map();
 let pendingAdminSyncs = 0;
 const dirtyOrderDrafts = new Set();
+let lastChecklistDebugOrderId = "";
 
 const els = {
   viewTitle: document.querySelector("#viewTitle"),
@@ -250,7 +251,7 @@ function normalizeData(loaded) {
     order.endedAt = order.endedAt || "";
     order.completedAt = order.completedAt || "";
     order.draftUpdate = order.draftUpdate || "";
-    order.checklist = normalizeOrderChecklist(order.checklist);
+    order.checklist = normalizeOrderChecklistFromOrder(order);
     order.updates = order.updates || [];
     order.assignee = order.assignee || "";
     order.assignee2 = order.assignee2 || "";
@@ -276,7 +277,7 @@ function normalizeData(loaded) {
     routine.taskType = routine.taskType || "Routine Maintenance";
     routine.assignee = routine.assignee || "";
     routine.assigneeEmail = normalizeEmail(routine.assigneeEmail);
-    routine.checklist = normalizeRoutineChecklist(routine.checklist, routine.details);
+    routine.checklist = routineChecklistTexts(routine, { includeDetailsFallback: true });
   });
   return loaded;
 }
@@ -299,6 +300,7 @@ async function loadRemoteData() {
   const payload = await response.json();
   if (!payload.ok) throw new Error(payload.error || "Backend load failed.");
   mergeRemoteData(payload.data || {});
+  logLoadedChecklistDebugOrder();
   announceRemoteChanges(before, remoteSnapshot());
   saveData();
   updateSyncStatus("ok", `Synced ${formatTimeOnly(new Date())}: ${visibleOrders().length} visible task(s), ${data.orders.length} loaded.`);
@@ -317,9 +319,11 @@ async function postRemote(action, body = {}) {
     })
   });
   const payload = await response.json();
+  debugChecklistFlow("backend response", payload);
   if (!payload.ok) throw new Error(payload.error || "Backend save failed.");
   if (payload.data) {
     mergeRemoteData(payload.data);
+    logLoadedChecklistDebugOrder(payload.data);
     saveData();
   }
   return payload;
@@ -394,6 +398,12 @@ async function syncAllAdmin(options = {}) {
 
 function syncOrderInBackground(order, label = "Uploading to Google...") {
   if (!order || !order.id) return Promise.resolve(false);
+  debugChecklistFlow("checklist before backend submit", {
+    id: order.id,
+    sourceRoutineId: order.sourceRoutineId || "",
+    checklist: order.checklist,
+    checklistItems: order.checklistItems || null
+  });
   pendingOrderSyncs.set(order.id, label);
   render();
   return syncOrder(cloneData(order), { silent: true }).then(ok => {
@@ -648,7 +658,7 @@ function render() {
 }
 
 function renderVersion() {
-  if (els.appVersion) els.appVersion.textContent = `v${appVersion}`;
+  if (els.appVersion) els.appVersion.textContent = appVersion;
 }
 
 const translations = {
@@ -1070,6 +1080,7 @@ function renderBarReport(id, counts) {
 }
 
 function orderCard(order) {
+  const checklistForRender = checklistForOrderDisplay(order);
   const editable = canEditOrder(order);
   const manageable = canManageData();
   const completed = order.status === "Completed";
@@ -1091,9 +1102,9 @@ function orderCard(order) {
   const canStart = editable && !completed && !order.startedAt && !pending;
   const canEnd = editable && !completed && order.startedAt && !order.endedAt && !pending;
   const canSubmit = editable && !completed && order.startedAt && order.endedAt && !pending;
-  const checklistHtml = order.checklist.length
+  const checklistHtml = checklistForRender.length
     ? `<div class="checklist">
-        ${order.checklist.map((item, index) => `<div class="check-row">
+        ${checklistForRender.map((item, index) => `<div class="check-row">
           <span>${escapeHtml(item.text)}</span>
           <label><input type="radio" class="checklist-status" name="${escapeHtml(order.id)}-${index}" data-order-id="${escapeHtml(order.id)}" data-index="${index}" value="ok" ${item.status === "ok" ? "checked" : ""} ${workUnlocked ? "" : "disabled"}> Ok</label>
           <label><input type="radio" class="checklist-status" name="${escapeHtml(order.id)}-${index}" data-order-id="${escapeHtml(order.id)}" data-index="${index}" value="not_ok" ${item.status === "not_ok" ? "checked" : ""} ${workUnlocked ? "" : "disabled"}> Not ok</label>
@@ -1142,8 +1153,9 @@ function orderCard(order) {
 function routineCard(routine) {
   const pendingLabel = pendingRoutineSyncs.get(routine.id) || "";
   const pending = Boolean(pendingLabel);
-  const checklist = routine.checklist && routine.checklist.length
-    ? `<ul class="routine-checklist">${routine.checklist.map(item => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
+  const routineChecklist = routineChecklistTexts(routine, { includeDetailsFallback: false });
+  const checklist = routineChecklist.length
+    ? `<ul class="routine-checklist">${routineChecklist.map(item => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
     : `<p>${escapeHtml(routine.details || "No checklist entered.")}</p>`;
   return `<article class="order-card routine-card ${pending ? "syncing-card" : ""}" data-routine-id="${escapeHtml(routine.id)}">
     <header>
@@ -1238,16 +1250,27 @@ async function saveOrder(event) {
   applyAssigneeUserMatch();
   applyAssignee2UserMatch();
   const update = document.querySelector("#updateInput").value.trim();
+  const selectedAssignee = {
+    assignee: document.querySelector("#assigneeInput").value.trim(),
+    assigneeEmail: normalizeEmail(document.querySelector("#assigneeEmailInput").value),
+    assignee2: document.querySelector("#assignee2Input").value.trim(),
+    assignee2Email: normalizeEmail(document.querySelector("#assignee2EmailInput").value)
+  };
+  const checklist = existing
+    ? normalizeOrderChecklistFromOrder(existing)
+    : routineChecklistForOrder(sourceRoutine);
+  debugChecklistFlow("source routine task object", sourceRoutine || null);
+  debugChecklistFlow("selected assignee before save", selectedAssignee);
   const order = {
     id,
     sourceRoutineId,
     title: document.querySelector("#titleInput").value.trim(),
     asset: document.querySelector("#assetInput").value.trim(),
     area: document.querySelector("#areaInput").value.trim(),
-    assignee: document.querySelector("#assigneeInput").value.trim(),
-    assigneeEmail: normalizeEmail(document.querySelector("#assigneeEmailInput").value),
-    assignee2: document.querySelector("#assignee2Input").value.trim(),
-    assignee2Email: normalizeEmail(document.querySelector("#assignee2EmailInput").value),
+    assignee: selectedAssignee.assignee,
+    assigneeEmail: selectedAssignee.assigneeEmail,
+    assignee2: selectedAssignee.assignee2,
+    assignee2Email: selectedAssignee.assignee2Email,
     adminEmail: normalizeEmail(document.querySelector("#adminEmailInput").value),
     taskType: document.querySelector("#taskTypeInput").value,
     priority: document.querySelector("#priorityInput").value,
@@ -1255,7 +1278,7 @@ async function saveOrder(event) {
     due: document.querySelector("#dueInput").value,
     hours: Number(document.querySelector("#hoursInput").value),
     details: document.querySelector("#detailsInput").value.trim(),
-    checklist: existing ? normalizeOrderChecklist(existing.checklist) : routineChecklistForOrder(sourceRoutine),
+    checklist,
     startedAt: existing ? existing.startedAt || "" : "",
     endedAt: existing ? existing.endedAt || "" : "",
     completedAt: existing ? existing.completedAt || "" : "",
@@ -1265,6 +1288,8 @@ async function saveOrder(event) {
     updates: existing ? existing.updates || [] : [],
     attachment: existing ? existing.attachment || null : null
   };
+  debugChecklistFlow("generated work task payload", order);
+  if (!existing && sourceRoutine) lastChecklistDebugOrderId = order.id;
   order.assigneeEmails = assigneeEmailsForOrder(order);
   if (update) order.updates.push(update);
   if (existing) {
@@ -1426,6 +1451,7 @@ async function generateOrderFromRoutine(id) {
   if (!canManageData()) return;
   const routine = data.routines.find(item => item.id === id);
   if (!routine) return;
+  debugChecklistFlow("source routine task object", routine);
   openOrderDialog({
     id: nextOrderId(),
     sourceRoutineId: routine.id,
@@ -1443,7 +1469,7 @@ async function generateOrderFromRoutine(id) {
     due: routine.nextDue,
     hours: routine.hours,
     details: `Routine maintenance from ${routine.id}. ${routine.details || ""}`.trim(),
-    checklist: routine.checklist.map(text => ({ text, status: "" })),
+    checklist: routineChecklistForOrder(routine),
     startedAt: "",
     endedAt: "",
     completedAt: "",
@@ -2187,10 +2213,10 @@ function isDateInMonth(dateText, year, month) {
 }
 
 function parseChecklist(value) {
-  return value
+  return uniqueChecklistTexts(value
     .split(/\r?\n/)
     .map(item => item.trim())
-    .filter(Boolean);
+    .filter(Boolean));
 }
 
 function parseStoredChecklist(value) {
@@ -2217,13 +2243,13 @@ function normalizeRoutineChecklist(checklist, details = "") {
     .map(item => typeof item === "string" ? item : item && item.text)
     .map(item => String(item || "").trim())
     .filter(Boolean);
-  if (items.length) return items;
+  if (items.length) return uniqueChecklistTexts(items);
   if (Array.isArray(checklist) || typeof checklist === "string") return [];
-  return parseStoredChecklist(details);
+  return uniqueChecklistTexts(parseStoredChecklist(details));
 }
 
 function normalizeOrderChecklist(checklist) {
-  return parseStoredChecklist(checklist)
+  return uniqueOrderChecklistItems(parseStoredChecklist(checklist)
     .map(item => {
       if (typeof item === "string") {
         return { text: item.trim(), status: "" };
@@ -2233,13 +2259,86 @@ function normalizeOrderChecklist(checklist) {
         status: item && item.status ? item.status : item && item.checked ? "ok" : ""
       };
     })
-    .filter(item => item.text);
+    .filter(item => item.text));
+}
+
+function normalizeOrderChecklistFromOrder(order) {
+  if (!order) return [];
+  const checklist = normalizeOrderChecklist(order.checklist);
+  if (checklist.length) return checklist;
+  return normalizeOrderChecklist(order.checklistItems);
 }
 
 function routineChecklistForOrder(routine) {
   if (!routine) return [];
-  return normalizeRoutineChecklist(routine.checklist, "")
+  return routineChecklistTexts(routine, { includeDetailsFallback: false })
     .map(text => ({ text, status: "" }));
+}
+
+function routineChecklistTexts(routine, options = {}) {
+  if (!routine) return [];
+  const candidates = [
+    routine.checklist,
+    routine.checklistItems,
+    routine.checkList,
+    routine.checklist_items
+  ];
+  for (const candidate of candidates) {
+    const items = normalizeRoutineChecklist(candidate, "");
+    if (items.length) return items;
+  }
+  return options.includeDetailsFallback ? normalizeRoutineChecklist(undefined, routine.details) : [];
+}
+
+function checklistForOrderDisplay(order) {
+  return normalizeOrderChecklistFromOrder(order);
+}
+
+function uniqueChecklistTexts(items) {
+  const seen = new Set();
+  return items.filter(item => {
+    const text = String(item || "").trim();
+    const key = text.toLowerCase();
+    if (!text || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function uniqueOrderChecklistItems(items) {
+  const seen = new Set();
+  return items.filter(item => {
+    const key = String(item.text || "").trim().toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function isChecklistDebugEnabled() {
+  try {
+    const params = new URLSearchParams(window.location.search || "");
+    return params.get("debugChecklist") === "1" || localStorage.getItem("lhMaintenanceDebugChecklist") === "1";
+  } catch {
+    return false;
+  }
+}
+
+function debugChecklistFlow(label, value) {
+  if (!isChecklistDebugEnabled()) return;
+  try {
+    console.debug(`[checklist-assignee] ${label}`, cloneData(value));
+  } catch {
+    console.debug(`[checklist-assignee] ${label}`, value);
+  }
+}
+
+function logLoadedChecklistDebugOrder(remoteData = null) {
+  if (!lastChecklistDebugOrderId || !isChecklistDebugEnabled()) return;
+  const remoteOrders = remoteData && Array.isArray(remoteData.orders) ? remoteData.orders : [];
+  const loaded = data.orders.find(order => order.id === lastChecklistDebugOrderId)
+    || remoteOrders.find(order => order.id === lastChecklistDebugOrderId);
+  debugChecklistFlow("loaded work task object after refresh", loaded || null);
 }
 
 function formatDateTime(value) {
