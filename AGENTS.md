@@ -22,6 +22,16 @@ This project is the LHSG Maintenance App, a static HTML/CSS/JavaScript progressi
 - Avoid broad rewrites of `app.js`, `styles.css`, `sw.js`, or service worker behavior unless the task requires it.
 - Be careful with PWA behavior, caching, push subscriptions, local storage, and Firebase/admin flows.
 
+## Critical Data Safety Rules
+
+- Google Sheet data is production data.
+- Do not delete, clear, overwrite, or replace existing records unless the owner explicitly requests it.
+- Completed maintenance records are production history and must be preserved.
+- UI, cache, service worker, and version updates must never modify backend records.
+- Every backend write change must target one row by a stable task ID or report ID.
+- Do not use whole-sheet replacement, bulk clear, or filtered frontend data to rewrite backend records.
+- If a proposed change may affect multiple backend rows, stop and explain the risk before editing or running it.
+
 ## Local Testing
 
 Use this preferred static server command from the repository root:
