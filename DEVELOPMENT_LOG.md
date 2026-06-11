@@ -62,3 +62,28 @@ Every Codex change should add a short dated entry to this file.
 - Files changed: `app.js`, `index.html`, `sw.js`, `version.json`, `DEVELOPMENT_LOG.md`.
 - Test result: `node --check app.js` passed. Automated checks confirmed syntax only; manual browser test cases for user A, user B, user C, assignee correctness, duplicate prevention, old task rendering, and console errors still need to be completed against local/live data.
 - Next step: Run `npx http-server . -p 8000 -c-1`, test routine-generated work orders with original and changed assignees, then commit and push after confirming on devices.
+
+## 2026-06-08 - Report Close Button
+
+- Task: Added a visible, accessible Close button to the completion report shown after work task submission.
+- Issue found: the completion report opened in a separate browser window with only a Save / Print PDF action, leaving no clear way to close it and return to the completed Work Task.
+- Files changed: `app.js`, `index.html`, `sw.js`, `version.json`, `DEVELOPMENT_LOG.md`.
+- Close behavior: Close focuses the original app window when available and closes only the generated report window; it does not submit again or clear submitted report data.
+- Test result: `node --check app.js` passed; version and cache consistency checks passed. Static browser test cases completed at desktop and mobile widths: submit report, report appears, Close is visible, Close returns to the original Work Orders screen, no duplicate submission, and no console errors.
+- Next step: Confirm the workflow with the live Google backend and installed PWA before committing and pushing.
+
+## 2026-06-08 - Version Label v1.4.9
+
+- Task: Updated the visible app version label and related version/cache identifiers to `v1.4.9`.
+- Files changed: `index.html`, `app.js`, `version.json`, `sw.js`, `DEVELOPMENT_LOG.md`.
+- Test result: Version consistency and JavaScript syntax checks passed.
+
+## 2026-06-08 - Completed Record Data Safety
+
+- Issue found: admin asset/routine saves, deletes, and imports used the `saveAll` backend action, which could replace Google Sheets data with a partial frontend dataset and remove completed maintenance records that were not currently loaded.
+- Files changed: `app.js`, `index.html`, `sw.js`, `version.json`, `DEVELOPMENT_LOG.md`.
+- Fix: removed all frontend `saveAll` calls; work tasks continue using row-specific `upsertOrder`. Asset/routine cloud saves and deletes now fail closed because their row-specific backend handlers cannot be verified, with no bulk-write fallback.
+- Completed record protection: ordinary edits to completed work orders are blocked, imports preserve existing completed records and remain local-only, and deletes require two confirmations including an export-backup warning.
+- Debugging: row-specific remote mutations and delete requests log only action, record type, and stable ID.
+- Test result: JavaScript/JSON syntax and no-`saveAll` static checks passed. Mocked browser tests confirmed report submission sends only one `upsertOrder`, preserves unrelated completed records, blocks completed-record edits, preserves existing records during additive import, and requires two delete confirmations. Final static assertions confirm unverified admin actions return before `postRemote`.
+- Backend deployment note: the Google Apps Script source is not present in this repository. Its deployed handlers must implement and advertise `upsertAsset`, `upsertRoutine`, `deleteOrder`, and `deleteRoutine` as row-specific operations and must reject `saveAll` for production data before those cloud actions are enabled.

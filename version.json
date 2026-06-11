@@ -1,5 +1,5 @@
 {
-  "version": "2026.06.05-checklist-assignee-fix-1",
-  "build": "20260605a",
-  "notes": "Preserve routine checklist carryover when changing assignee during today's work task creation."
+  "version": "v1.4.9",
+  "build": "20260605d",
+  "notes": "Prevent bulk dataset writes and protect completed maintenance records."
 }

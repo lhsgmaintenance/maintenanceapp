@@ -1,4 +1,4 @@
-const cacheName = "lh-maintenance-20260605-checklist-assignee-fix-1";
+const cacheName = "lh-maintenance-v1.4.9-data-safety-1";
 const appShell = [
   "./",
   "index.html",

@@ -1,7 +1,7 @@
 const storeKey = "lhMaintenanceData";
 const legacyStoreKey = "maintenanceDeskData";
-const appVersion = "2026.06.05-checklist-assignee-fix-1";
-const appBuild = "20260605a";
+const appVersion = "v1.4.9";
+const appBuild = "20260605d";
 const defaultApiUrl = "https://script.google.com/macros/s/AKfycbyOnhU47l57sR2xh0SgpaSR9Vt_dCYKYTQNmtYO1BH5of-5ILLwU_LUkxCkxtsHOmJw/exec";
 const legacyApiUrls = [
   "https://script.google.com/macros/s/AKfycbzfsye5T03XaH5YVY27i6Hk7T9frOHYtJ4XRPezG5xLhfQonBdWvjrLaMK0we_5mj0/exec"
@@ -338,10 +338,16 @@ function mergeRemoteData(remote) {
   const localDrafts = captureDraftUpdates();
   const localOrders = data.orders || [];
   const localRoutines = data.routines || [];
-  data.orders = mergePendingRemoteItems(remote.orders || [], localOrders, pendingOrderSyncs, "id");
-  data.assets = remote.assets || [];
-  data.routines = mergePendingRemoteItems(remote.routines || [], localRoutines, pendingRoutineSyncs, "id");
-  data.notifications = mergeNotifications(remote.notifications || [], localNotifications);
+  if (Object.prototype.hasOwnProperty.call(remote, "orders")) {
+    data.orders = mergePendingRemoteItems(remote.orders || [], localOrders, pendingOrderSyncs, "id");
+  }
+  if (Object.prototype.hasOwnProperty.call(remote, "assets")) data.assets = remote.assets || [];
+  if (Object.prototype.hasOwnProperty.call(remote, "routines")) {
+    data.routines = mergePendingRemoteItems(remote.routines || [], localRoutines, pendingRoutineSyncs, "id");
+  }
+  if (Object.prototype.hasOwnProperty.call(remote, "notifications")) {
+    data.notifications = mergeNotifications(remote.notifications || [], localNotifications);
+  }
   data.settings = {
     ...localSettings,
     ...(remote.settings || {})
@@ -372,6 +378,7 @@ function mergePendingRemoteItems(remoteItems, localItems, pendingMap, keyField) 
 }
 
 async function syncOrder(order, options = {}) {
+  logRemoteMutation("upsertOrder", "work order", order && order.id);
   try {
     await postRemote("upsertOrder", { order });
     updateSyncStatus("ok", `Saved to Google ${formatTimeOnly(new Date())}.`);
@@ -383,17 +390,27 @@ async function syncOrder(order, options = {}) {
   }
 }
 
-async function syncAllAdmin(options = {}) {
+function logRemoteMutation(action, recordType, recordId) {
+  console.info("[data-safety] remote mutation", {
+    action,
+    recordType,
+    recordId: String(recordId || "")
+  });
+}
+
+async function syncRemoteRecord(action, _payload, options = {}) {
   if (!canManageData()) return false;
-  try {
-    await postRemote("saveAll", { data: options.data || data });
-    updateSyncStatus("ok", `Saved to Google ${formatTimeOnly(new Date())}.`);
-    return true;
-  } catch (err) {
-    updateSyncStatus("error", `Google sync pending: ${err.message}`);
-    if (!options.silent) alert(`Could not sync admin changes to Google database: ${err.message}`);
-    return false;
+  logRemoteMutation(action, options.recordType, options.recordId);
+  console.warn("[data-safety] blocked unverified backend action", {
+    action,
+    recordType: options.recordType || "record",
+    recordId: String(options.recordId || "")
+  });
+  updateSyncStatus("error", `Google ${options.recordType || "record"} change blocked: row-specific backend action is not verified.`);
+  if (!options.silent) {
+    alert("This Google change was blocked because the row-specific backend action is not verified. No Google Sheet rows were changed.");
   }
+  return false;
 }
 
 function syncOrderInBackground(order, label = "Uploading to Google...") {
@@ -415,26 +432,26 @@ function syncOrderInBackground(order, label = "Uploading to Google...") {
   });
 }
 
-function syncAllAdminInBackground(options = {}) {
-  const routineIds = options.routineIds || [];
-  const orderIds = options.orderIds || [];
-  routineIds.forEach(id => pendingRoutineSyncs.set(id, options.label || "Uploading to Google..."));
-  orderIds.forEach(id => pendingOrderSyncs.set(id, options.label || "Uploading to Google..."));
+function syncAdminRecordInBackground(action, payload, options = {}) {
+  const routineId = options.routineId || "";
+  const orderId = options.orderId || "";
+  if (routineId) pendingRoutineSyncs.set(routineId, options.label || "Uploading to Google...");
+  if (orderId) pendingOrderSyncs.set(orderId, options.label || "Uploading to Google...");
   pendingAdminSyncs += 1;
   render();
-  return syncAllAdmin({ silent: true, data: options.data }).then(ok => {
-    routineIds.forEach(id => pendingRoutineSyncs.delete(id));
-    orderIds.forEach(id => pendingOrderSyncs.delete(id));
+  return syncRemoteRecord(action, payload, {
+    silent: true,
+    recordType: options.recordType,
+    recordId: options.recordId
+  }).then(ok => {
+    if (routineId) pendingRoutineSyncs.delete(routineId);
+    if (orderId) pendingOrderSyncs.delete(orderId);
     return ok;
   }).finally(() => {
     pendingAdminSyncs = Math.max(0, pendingAdminSyncs - 1);
     saveData();
     render();
   });
-}
-
-function syncSnapshotInBackground(snapshot) {
-  syncAllAdmin({ silent: true, data: cloneData(snapshot) });
 }
 
 async function refreshRemoteData({ announceErrors = false } = {}) {
@@ -1244,6 +1261,10 @@ async function saveOrder(event) {
   if (!canManageData()) return;
   const id = document.querySelector("#orderId").value || nextOrderId();
   const existing = data.orders.find(order => order.id === id);
+  if (existing && existing.status === "Completed") {
+    alert("Completed maintenance records are locked. Create a new work task for corrections or use the explicit delete process after exporting a backup.");
+    return;
+  }
   const sourceRoutineId = document.querySelector("#sourceRoutineId").value;
   const sourceRoutine = sourceRoutineId ? data.routines.find(routine => routine.id === sourceRoutineId) : null;
   const previousAssignees = existing ? assigneeEmailsForOrder(existing).join("|") : "";
@@ -1322,20 +1343,24 @@ async function deleteCurrentOrder() {
   const id = document.querySelector("#orderId").value;
   const order = data.orders.find(item => item.id === id);
   if (!order) return;
-  const okToDelete = await confirmDestructiveAction({
+  const okToDelete = await confirmDeleteWithBackupWarning({
     title: "Delete work order?",
     message: "This task will be removed after the Google database confirms the deletion.",
     target: `${order.id} - ${order.title}`,
-    actionText: "Confirm Delete"
+    actionText: "Confirm Delete",
+    recordType: order.status === "Completed" ? "completed maintenance record" : "work order",
+    recordId: order.id
   });
   if (!okToDelete) return;
-  const nextData = cloneData(data);
-  nextData.orders = nextData.orders.filter(item => item.id !== id);
   pendingOrderSyncs.set(id, "Deleting from Google...");
   closeDialog(els.orderDialog);
   render();
   updateSyncStatus("ok", "Deleting work order from Google...");
-  const saved = await syncAllAdmin({ silent: true, data: nextData });
+  const saved = await syncRemoteRecord("deleteOrder", { orderId: id }, {
+    silent: true,
+    recordType: "work order",
+    recordId: id
+  });
   pendingOrderSyncs.delete(id);
   if (saved) {
     data.orders = data.orders.filter(item => item.id !== id);
@@ -1350,18 +1375,23 @@ async function deleteCurrentOrder() {
 async function saveAsset(event) {
   event.preventDefault();
   if (!canManageData()) return;
-  data.assets.push({
+  const asset = {
     name: document.querySelector("#assetNameInput").value.trim(),
     area: document.querySelector("#assetAreaInput").value.trim(),
     type: document.querySelector("#assetTypeInput").value.trim(),
     lastService: document.querySelector("#assetServiceInput").value
-  });
+  };
+  data.assets.push(asset);
   saveData();
   closeDialog(els.assetDialog);
   els.assetForm.reset();
   render();
   updateSyncStatus("ok", "Saved locally. Syncing to Google...");
-  syncAllAdminInBackground();
+  syncAdminRecordInBackground("upsertAsset", { asset: cloneData(asset) }, {
+    recordType: "asset",
+    recordId: asset.name,
+    label: "Uploading asset to Google..."
+  });
 }
 
 function openRoutineDialog(routine = null) {
@@ -1414,7 +1444,12 @@ async function saveRoutine(event) {
   closeDialog(els.routineDialog);
   render();
   updateSyncStatus("ok", "Saved locally. Uploading routine to Google...");
-  syncAllAdminInBackground({ routineIds: [routine.id], label: "Uploading routine to Google..." });
+  syncAdminRecordInBackground("upsertRoutine", { routine: cloneData(routine) }, {
+    routineId: routine.id,
+    recordType: "routine",
+    recordId: routine.id,
+    label: "Uploading routine to Google..."
+  });
 }
 
 async function deleteCurrentRoutine() {
@@ -1422,20 +1457,24 @@ async function deleteCurrentRoutine() {
   const id = document.querySelector("#routineId").value;
   const routine = data.routines.find(item => item.id === id);
   if (!routine) return;
-  const okToDelete = await confirmDestructiveAction({
+  const okToDelete = await confirmDeleteWithBackupWarning({
     title: "Delete routine task?",
     message: "This routine will be removed after the Google database confirms the deletion.",
     target: `${routine.id} - ${routine.title}`,
-    actionText: "Confirm Delete"
+    actionText: "Confirm Delete",
+    recordType: "routine task",
+    recordId: routine.id
   });
   if (!okToDelete) return;
-  const nextData = cloneData(data);
-  nextData.routines = nextData.routines.filter(item => item.id !== id);
   pendingRoutineSyncs.set(id, "Deleting from Google...");
   closeDialog(els.routineDialog);
   render();
   updateSyncStatus("ok", "Deleting routine task from Google...");
-  const saved = await syncAllAdmin({ silent: true, data: nextData });
+  const saved = await syncRemoteRecord("deleteRoutine", { routineId: id }, {
+    silent: true,
+    recordType: "routine",
+    recordId: id
+  });
   pendingRoutineSyncs.delete(id);
   if (saved) {
     data.routines = data.routines.filter(item => item.id !== id);
@@ -1481,6 +1520,7 @@ async function generateOrderFromRoutine(id) {
 async function handleOrderAction(action, id) {
   const order = data.orders.find(item => item.id === id);
   if (!order) return;
+  if (action === "submit" && order.status === "Completed") return;
   if (action !== "pdf" && !canEditOrder(order)) return;
   const now = new Date().toISOString();
   if (action === "submit") saveDraftUpdateFromPage(order);
@@ -1570,20 +1610,53 @@ function openCompletionReport(order) {
   report.document.write(`<!doctype html>
     <html>
     <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
       <title>${escapeHtml(order.id)} Completion Report</title>
       <style>
-        body { font-family: Arial, sans-serif; color: #1d252b; margin: 32px; }
+        * { box-sizing: border-box; }
+        body {
+          font-family: Arial, sans-serif;
+          color: #1d252b;
+          margin: 0;
+          padding: calc(24px + env(safe-area-inset-top, 0px)) max(24px, env(safe-area-inset-right, 0px)) calc(32px + env(safe-area-inset-bottom, 0px)) max(24px, env(safe-area-inset-left, 0px));
+        }
         h1 { font-size: 22px; margin-bottom: 4px; }
         h2 { font-size: 16px; margin-top: 24px; }
         table { width: 100%; border-collapse: collapse; margin-top: 12px; }
         th, td { border: 1px solid #cfd8de; padding: 8px; text-align: left; vertical-align: top; }
         th { background: #eef3f5; }
         .meta { color: #586873; margin-bottom: 18px; }
-        @media print { button { display: none; } }
+        .report-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
+        button {
+          min-height: 42px;
+          padding: 10px 16px;
+          border: 1px solid #0e746e;
+          border-radius: 8px;
+          background: #0e746e;
+          color: #fff;
+          font: inherit;
+          font-weight: 700;
+          cursor: pointer;
+          touch-action: manipulation;
+        }
+        button.secondary { background: #fff; color: #0e746e; }
+        button:focus-visible { outline: 3px solid rgba(14, 116, 110, 0.28); outline-offset: 2px; }
+        @media (max-width: 520px) {
+          body {
+            padding: calc(14px + env(safe-area-inset-top, 0px)) max(14px, env(safe-area-inset-right, 0px)) calc(20px + env(safe-area-inset-bottom, 0px)) max(14px, env(safe-area-inset-left, 0px));
+          }
+          .report-actions { display: grid; grid-template-columns: 1fr; }
+          button { width: 100%; }
+          table { display: block; overflow-x: auto; }
+        }
+        @media print { .report-actions { display: none; } }
       </style>
     </head>
     <body>
-      <button onclick="window.print()">Save / Print PDF</button>
+      <div class="report-actions" aria-label="Report actions">
+        <button type="button" onclick="window.print()">Save / Print PDF</button>
+        <button type="button" class="secondary" aria-label="Close report" onclick="if (window.opener) window.opener.focus(); window.close();">Close</button>
+      </div>
       <h1>LH Maintenance Completion Report</h1>
       <div class="meta">${escapeHtml(order.id)} | ${escapeHtml(order.status)}</div>
       <table>
@@ -2470,6 +2543,21 @@ function confirmDestructiveAction(options) {
   });
 }
 
+async function confirmDeleteWithBackupWarning(options) {
+  const firstConfirmed = await confirmDestructiveAction(options);
+  if (!firstConfirmed) return false;
+  console.warn("[data-safety] delete requested", {
+    recordType: options.recordType || "record",
+    recordId: String(options.recordId || "")
+  });
+  return confirmDestructiveAction({
+    title: "Final delete confirmation",
+    message: `Export a backup before deleting this ${options.recordType || "record"}. This action must affect only the selected ID.`,
+    target: options.target,
+    actionText: "Delete Selected Record"
+  });
+}
+
 function highlightSelectedCard(card) {
   if (!card) return;
   document.querySelectorAll(".selected-card").forEach(item => item.classList.remove("selected-card"));
@@ -2561,12 +2649,26 @@ async function importData(event) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = () => {
-    data = normalizeData(JSON.parse(reader.result));
+    const imported = normalizeData(JSON.parse(reader.result));
+    data.orders = mergeRecordsByKey(data.orders, imported.orders, item => item.id);
+    data.assets = mergeRecordsByKey(data.assets, imported.assets, item => item.name);
+    data.routines = mergeRecordsByKey(data.routines, imported.routines, item => item.id);
+    data.notifications = mergeRecordsByKey(data.notifications, imported.notifications, item => item.id);
     saveData();
-    syncAllAdmin();
     render();
+    updateSyncStatus("ok", "Import merged on this device only. Google data was not bulk replaced.");
+    alert("Import completed locally without changing Google Sheets. Existing completed maintenance records were preserved. Sync individual records only after reviewing the imported data.");
   };
   reader.readAsText(file);
+}
+
+function mergeRecordsByKey(current, incoming, keyFor) {
+  const merged = new Map((current || []).map(item => [String(keyFor(item) || ""), item]));
+  (incoming || []).forEach(item => {
+    const key = String(keyFor(item) || "");
+    if (key && !merged.has(key)) merged.set(key, item);
+  });
+  return Array.from(merged.values());
 }
 
 function normalizeEmail(value) {
